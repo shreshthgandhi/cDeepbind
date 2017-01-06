@@ -137,23 +137,33 @@ def calibrate_model(target_protein='RNCMPT00168', num_calibrations=5,
         best_pearson[model_type] = np.zeros([num_calibrations, config_lists[model_type][0].folds])
         last_pearson[model_type] = np.zeros([num_calibrations, config_lists[model_type][0].folds])
         best_epoch[model_type] = np.zeros([num_calibrations, config_lists[model_type][0].folds])
-
+        models = []
         configs = config_lists[model_type]  #For each model type a list of configs
         inputs = input_lists[model_type] #Each is a list containing the 3 folds
-        for cal_idx in range(num_calibrations):   #Run 3 folds for each calibration
-            config_calib = configs[cal_idx] #Model config for this calibration
-            print("%.2f%% calibrations complete for %s"%(((cal_idx+1)*100)/num_calibrations,model_type))
+        for fold in range(3):
             with tf.Graph().as_default():
-                models = {} #Generate 3 models, one for each fold
-                for fold_idx in range(config_calib.folds):
-                    print("fold %d" %(fold_idx+1) )
-                    with tf.variable_scope(model_type, reuse=True): #Have a different variable scope for each model type
-                        m = utils.Deepbind_model(config_calib, inputs[fold_idx], model_type)
-                    with tf.Session() as session:
-                        (best_pearson[model_type][cal_idx][fold_idx],
-                        last_pearson[model_type][cal_idx][fold_idx],
-                        best_epoch[model_type][cal_idx][fold_idx]) = utils.train_model(session,
-                                                                                       config_calib, m)
+                for i in range(num_calibrations):
+                    models.append(utils.Deepbind_model(configs[i], inputs[fold], model_type))
+                with tf.Session() as session:
+                    (best_pearson[model_type][:,fold],
+                     last_pearson[model_type][:,fold],
+                     best_epoch[model_type][:,fold]) = \
+                        utils.train_model_parallel(session, configs[0], models, inputs[fold], early_stop=False)
+
+        # for cal_idx in range(num_calibrations):   #Run 3 folds for each calibration
+        #     config_calib = configs[cal_idx] #Model config for this calibration
+        #     print("%.2f%% calibrations complete for %s"%(((cal_idx+1)*100)/num_calibrations,model_type))
+        #     with tf.Graph().as_default():
+        #         models = {} #Generate 3 models, one for each fold
+        #         for fold_idx in range(config_calib.folds):
+        #             print("fold %d" %(fold_idx+1) )
+        #             with tf.variable_scope(model_type, reuse=True): #Have a different variable scope for each model type
+        #                 m = utils.Deepbind_model(config_calib, inputs[fold_idx], model_type)
+        #             with tf.Session() as session:
+        #                 (best_pearson[model_type][cal_idx][fold_idx],
+        #                 last_pearson[model_type][cal_idx][fold_idx],
+        #                 best_epoch[model_type][cal_idx][fold_idx]) = utils.train_model(session,
+        #                                                                                config_calib, m)
         best_calib_idx[model_type] = int(np.argmax(np.mean(best_pearson[model_type], axis=1)))
         best_fold = int(np.argmax(best_pearson[model_type][best_calib_idx[model_type]]))
         best_epoch_final[model_type] = best_epoch[model_type][best_calib_idx[model_type]][best_fold]
@@ -164,4 +174,6 @@ def calibrate_model(target_protein='RNCMPT00168', num_calibrations=5,
         best_calibrations[model_type] = config_lists[model_type][best_calib_idx[model_type]]
         best_calibrations[model_type].early_stop_epochs = int(best_epoch_final[model_type])
         best_pearson[model_type] = np.mean(best_pearson[model_type][best_calib_idx[model_type]])
+        utils.save_calibration(target_protein,model_type,flag, best_calibrations[model_type],
+                               best_pearson[model_type],'./calibrations')
     return (best_calibrations, best_pearson)

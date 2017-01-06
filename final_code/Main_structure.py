@@ -14,6 +14,7 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small'):
     calibration_flag = True
     # model_size_flag = 'small'
     model_testing_list = ['CNN_struct', 'CNN']
+
     if calibration_flag:
         best_config, best_metric = calib.calibrate_model(target_protein,
                                                          num_calibrations=10,
@@ -39,39 +40,49 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small'):
         best_epoch = np.zeros([num_final_runs])
         with tf.Graph().as_default():
             input_data[model_type] = utils.Deepbind_input(input_config, inf, model_type, validation=False)
-            with tf.variable_scope("Model", reuse=True):
-                models[model_type] = utils.Deepbind_model(best_config[model_type],
-                                                          input_data[model_type],
-                                                          model_type)
-            saver = tf.train.Saver()
+            models = []
             for runs in range(num_final_runs):
-                # input_data[model_type] = utils.Deepbind_input(input_config, inf, model_type, validation=False)
-                # models[model_type].input = input_data[model_type]
-                # with tf.variable_scope("Model", reuse=True):
-                #     models[model_type] = utils.Deepbind_model(best_config[model_type],
-                #                                               input_data[model_type],
-                #                                               model_type)
-                with tf.Session() as session:
-
-                    (best_pearson[runs],
-                    last_pearson[runs],
-                    best_epoch[runs]) = utils.train_model(session,
-                                                      best_config[model_type],
-                                                      models[model_type],
-                                                      early_stop=True)
-                    model_id = '../tmp/'+target_protein+str(runs)+'.ckpt'
-                    saver.save(session, model_id)
+                models.append(utils.Deepbind_model(best_config[model_type],
+                                                          input_data[model_type],
+                                                          model_type))
+            # with tf.variable_scope("Model", reuse=True):
+            #     models[model_type] = utils.Deepbind_model(best_config[model_type],
+            #                                               input_data[model_type],
+            #                                               model_type)
+            saver = tf.train.Saver()
+            with tf.Session() as session:
+                (best_pearson, last_pearson, best_epoch) = \
+                    utils.train_model_parallel(session, best_config_model_type,
+                                               models, input_data[model_type],
+                                               early_stop=True)
+            # for runs in range(num_final_runs):
+            #     # input_data[model_type] = utils.Deepbind_input(input_config, inf, model_type, validation=False)
+            #     # models[model_type].input = input_data[model_type]
+            #     # with tf.variable_scope("Model", reuse=True):
+            #     #     models[model_type] = utils.Deepbind_model(best_config[model_type],
+            #     #                                               input_data[model_type],
+            #     #                                               model_type)
+            #     with tf.Session() as session:
+            #
+            #         (best_pearson[runs],
+            #         last_pearson[runs],
+            #         best_epoch[runs]) = utils.train_model(session,
+            #                                           best_config[model_type],
+            #                                           models[model_type],
+            #                                           early_stop=True)
+            #         model_id = '../tmp/'+target_protein+str(runs)+'.ckpt'
+            #         saver.save(session, model_id)
             best_model = np.argmax(last_pearson)
             print("Pearson correlation for %s using %s is %.4f"%(target_protein,model_type, np.max(last_pearson)))
             result_id = '../results_final/'+target_protein+str(model_type)
             np.savez(result_id, pearson = np.max(last_pearson))
             model_best_id = '../tmp/'+target_protein+str(best_model)+'.ckpt'
 
-            with tf.Session() as sess:
-                # saver = tf.train.Saver()
-                saver.restore(sess, model_best_id)
-                model_final_location = '../models/' + target_protein+'.ckpt'
-                saver.save(sess, model_final_location)
+            # with tf.Session() as sess:
+            #     # saver = tf.train.Saver()
+            #     saver.restore(sess, model_best_id)
+            #     model_final_location = '../models/' + target_protein+'.ckpt'
+            #     saver.save(sess, model_final_location)
 
 
         # saver = tf.train.Saver()
@@ -93,59 +104,60 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small'):
 if __name__ == "__main__":
     # main()
     # targets = ['RNCMPT00168', 'RNCMPT00076', 'RNCMPT00268', 'RNCMPT00038', 'RNCMPT00111']
-    targets = ['RNCMPT00100',
-                     'RNCMPT00101',
-                     'RNCMPT00102',
-                     'RNCMPT00103',
-                     'RNCMPT00104',
-                     'RNCMPT00105',
-                     'RNCMPT00106',
-                     'RNCMPT00107',
-                     'RNCMPT00108',
-                     'RNCMPT00109',
-                     'RNCMPT00010',
-                     'RNCMPT00110',
-                     'RNCMPT00111',
-                     'RNCMPT00112',
-                     'RNCMPT00113',
-                     'RNCMPT00114',
-                     'RNCMPT00116',
-                     'RNCMPT00117',
-                     'RNCMPT00118',
-                     'RNCMPT00119',
-                     'RNCMPT00011',
-                     'RNCMPT00120',
-                     'RNCMPT00121',
-                     'RNCMPT00122',
-                     'RNCMPT00123',
-                     'RNCMPT00124',
-                     'RNCMPT00126',
-                     'RNCMPT00127',
-                     'RNCMPT00129',
-                     'RNCMPT00012',
-                     'RNCMPT00131',
-                     'RNCMPT00132',
-                     'RNCMPT00133',
-                     'RNCMPT00134',
-                     'RNCMPT00136',
-                     'RNCMPT00137',
-                     'RNCMPT00138',
-                     'RNCMPT00139',
-                     'RNCMPT00013',
-                     'RNCMPT00140',
-                     'RNCMPT00141',
-                     'RNCMPT00142',
-                     'RNCMPT00143',
-                     'RNCMPT00144',
-                     'RNCMPT00145',
-                     'RNCMPT00146',
-                     'RNCMPT00147',
-                     'RNCMPT00148',
-                     'RNCMPT00149',
-                     'RNCMPT00014',
-                     'RNCMPT00150',
-                     'RNCMPT00151',
-                     'RNCMPT00152',]
+    # targets = ['RNCMPT00100',
+    #                  'RNCMPT00101',
+    #                  'RNCMPT00102',
+    #                  'RNCMPT00103',
+    #                  'RNCMPT00104',
+    #                  'RNCMPT00105',
+    #                  'RNCMPT00106',
+    #                  'RNCMPT00107',
+    #                  'RNCMPT00108',
+    #                  'RNCMPT00109',
+    #                  'RNCMPT00010',
+    #                  'RNCMPT00110',
+    #                  'RNCMPT00111',
+    #                  'RNCMPT00112',
+    #                  'RNCMPT00113',
+    #                  'RNCMPT00114',
+    #                  'RNCMPT00116',
+    #                  'RNCMPT00117',
+    #                  'RNCMPT00118',
+    #                  'RNCMPT00119',
+    #                  'RNCMPT00011',
+    #                  'RNCMPT00120',
+    #                  'RNCMPT00121',
+    #                  'RNCMPT00122',
+    #                  'RNCMPT00123',
+    #                  'RNCMPT00124',
+    #                  'RNCMPT00126',
+    #                  'RNCMPT00127',
+    #                  'RNCMPT00129',
+    #                  'RNCMPT00012',
+    #                  'RNCMPT00131',
+    #                  'RNCMPT00132',
+    #                  'RNCMPT00133',
+    #                  'RNCMPT00134',
+    #                  'RNCMPT00136',
+    #                  'RNCMPT00137',
+    #                  'RNCMPT00138',
+    #                  'RNCMPT00139',
+    #                  'RNCMPT00013',
+    #                  'RNCMPT00140',
+    #                  'RNCMPT00141',
+    #                  'RNCMPT00142',
+    #                  'RNCMPT00143',
+    #                  'RNCMPT00144',
+    #                  'RNCMPT00145',
+    #                  'RNCMPT00146',
+    #                  'RNCMPT00147',
+    #                  'RNCMPT00148',
+    #                  'RNCMPT00149',
+    #                  'RNCMPT00014',
+    #                  'RNCMPT00150',
+    #                  'RNCMPT00151',
+    #                  'RNCMPT00152',]
+    targets = ['RNCMPT00158']
     models = ['CNN_struct', 'CNN']
     testing = True
     training = True
