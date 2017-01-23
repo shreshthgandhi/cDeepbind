@@ -142,16 +142,16 @@ class Deepbind_CNN_struct_model(object):
     """The deepbind_CNN model with structure"""
     def __init__(self, config, input_):
         # type: (object, object) -> object
-        self._input = input_
+        # self._input = input_
         self._config = config
 #         batch_size = input_.batch_size
         eta_model = config.eta_model
         momentum_model = config.momentum_model
         lam_model = config.lam_model
-        epochs = config.epochs
-        training_cases = input_.training_cases
-        test_cases = input_.test_cases
-        minib = config.minib
+        # epochs = config.epochs
+        # training_cases = input_.training_cases
+        # test_cases = input_.test_cases
+        # minib = config.minib
         seq_length = input_.seq_length
         
         m = config.motif_len  # Tunable Motif length
@@ -534,7 +534,7 @@ def save_calibration(protein, model_type,flag, config,new_metric, save_dir):
                  motif_len = config.motif_len,
                  num_motifs = config.num_motifs,
                  init_scale = config.init_scale,
-                 folds = config.init_folds,
+                 folds = config.folds,
                  training_frac = config.training_frac,
                  test_frac = config.test_frac,
                  epochs = config.epochs,

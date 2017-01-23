@@ -50,9 +50,9 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small'):
             #                                               input_data[model_type],
             #                                               model_type)
             saver = tf.train.Saver()
-            with tf.Session() as session:
+            with tf.Session()    as session:
                 (best_pearson, last_pearson, best_epoch) = \
-                    utils.train_model_parallel(session, best_config_model_type,
+                    utils.train_model_parallel(session, best_config[model_type],
                                                models, input_data[model_type],
                                                early_stop=True)
             # for runs in range(num_final_runs):
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     training = True
     if training:
         for protein in targets:
-            main( target_protein=protein, model_size_flag='large')
+            main( target_protein=protein, model_size_flag='small')
     if testing:
         result_file = open('../results_final/summary.tsv', 'w')
         heading  = 'Protein\t' + '\t'.join(models) +'\n'

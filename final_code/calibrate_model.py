@@ -125,8 +125,8 @@ def calibrate_model(target_protein='RNCMPT00168', num_calibrations=5,
     best_epoch = {}
     best_calib_idx = {}
     best_epoch_final = {}
-    for model in model_testing_list:
-        config_lists[model] = utils.generate_configs(num_calibrations, model, flag)
+    for model_type in model_testing_list:
+        config_lists[model_type] = utils.generate_configs(num_calibrations, model_type, flag)
     for model in model_testing_list:
         inputs = []
         inputs.append(utils.Deepbind_input(input_configuration, inf, model, validation=True, fold_id=1))
@@ -137,11 +137,12 @@ def calibrate_model(target_protein='RNCMPT00168', num_calibrations=5,
         best_pearson[model_type] = np.zeros([num_calibrations, config_lists[model_type][0].folds])
         last_pearson[model_type] = np.zeros([num_calibrations, config_lists[model_type][0].folds])
         best_epoch[model_type] = np.zeros([num_calibrations, config_lists[model_type][0].folds])
-        models = []
+
         configs = config_lists[model_type]  #For each model type a list of configs
         inputs = input_lists[model_type] #Each is a list containing the 3 folds
         for fold in range(3):
             with tf.Graph().as_default():
+                models = []
                 for i in range(num_calibrations):
                     models.append(utils.Deepbind_model(configs[i], inputs[fold], model_type))
                 with tf.Session() as session:
