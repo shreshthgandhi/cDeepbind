@@ -8,12 +8,18 @@ import matplotlib.image as mpimg
 import calibrate_model as calib
 import models as utils
 import os.path
+from datetime import  datetime
 # %matplotlib inline
 
 def main(target_protein='RNCMPT00168', model_size_flag ='small'):
     calibration_flag = True
     # model_size_flag = 'small'
     model_testing_list = ['CNN_struct', 'CNN']
+    traindir = {}
+    for model_type in model_testing_list:
+        model_dir = os.path.join('../models/'+model_type, datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+        os.makedirs(model_dir)
+        traindir[model_type] = model_dir
 
     if calibration_flag:
         best_config, best_metric = calib.calibrate_model(target_protein,
@@ -42,19 +48,25 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small'):
             input_data[model_type] = utils.Deepbind_input(input_config, inf, model_type, validation=False)
             models = []
             for runs in range(num_final_runs):
-                models.append(utils.Deepbind_model(best_config[model_type],
-                                                          input_data[model_type],
-                                                          model_type))
+                with tf.name_scope('model'+str(runs)):
+                    models.append(utils.Deepbind_model(best_config[model_type],
+                                                              input_data[model_type],
+                                                              model_type))
             # with tf.variable_scope("Model", reuse=True):
             #     models[model_type] = utils.Deepbind_model(best_config[model_type],
             #                                               input_data[model_type],
             #                                               model_type)
-            saver = tf.train.Saver()
+
             with tf.Session()    as session:
                 (best_pearson, last_pearson, best_epoch) = \
                     utils.train_model_parallel(session, best_config[model_type],
                                                models, input_data[model_type],
                                                early_stop=True)
+                best_model = np.argmax(last_pearson)
+                best_model_vars = tf.contrib.framework.get_variables(scope='model' + str(best_model))
+                saver = tf.train.Saver(best_model_vars)
+                model_best_id = traindir[model_type] + '/'+target_protein +  'best_model.ckpt'
+                saver.save(session,model_best_id)
             # for runs in range(num_final_runs):
             #     # input_data[model_type] = utils.Deepbind_input(input_config, inf, model_type, validation=False)
             #     # models[model_type].input = input_data[model_type]
@@ -72,11 +84,14 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small'):
             #                                           early_stop=True)
             #         model_id = '../tmp/'+target_protein+str(runs)+'.ckpt'
             #         saver.save(session, model_id)
-            best_model = np.argmax(last_pearson)
+
             print("Pearson correlation for %s using %s is %.4f"%(target_protein,model_type, np.max(last_pearson)))
-            result_id = '../results_final/'+target_protein+str(model_type)
+            result_id = traindir[model_type]+'/results_final/'+target_protein+str(model_type)
+            os.makedirs(traindir[model_type]+'/results_final/')
             np.savez(result_id, pearson = np.max(last_pearson))
-            model_best_id = '../tmp/'+target_protein+str(best_model)+'.ckpt'
+
+
+
 
             # with tf.Session() as sess:
             #     # saver = tf.train.Saver()
