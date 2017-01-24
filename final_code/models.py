@@ -182,19 +182,19 @@ class Deepbind_CNN_struct_model(object):
         #Taking max of rectified output was giving poor performance
         h_max = tf.reduce_max(h_conv2+b_conv2, reduction_indices=[1, 2, 3], name='h_max')
         h_avg = tf.reduce_mean(h_conv2+b_conv2, reduction_indices=[1, 2, 3], name='h_avg')
-        W_final = tf.Variable(tf.random_normal([2], stddev=0.01))
+        W_final = tf.Variable(tf.random_normal([2,1], stddev=0.01))
         b_final = tf.Variable(tf.constant(0.001, shape=[]))
-        h_final = tf.mul(tf.pack([h_max,h_avg]),W_final) + b_final
+        h_final = tf.squeeze(tf.matmul(tf.pack([h_max,h_avg],axis=1),W_final) + b_final)
         # Output has shape None and is a vector of length minib
 
-        cost_batch = tf.square(h_max - y_true)
-        # cost_batch = tf.square(h_final - y_true)
+        # cost_batch = tf.square(h_max - y_true)
+        cost_batch = tf.square(h_final - y_true)
         self._cost = cost = tf.reduce_mean(cost_batch)
         # tf.scalar_summary("Training Loss", cost)
         norm_w = (tf.reduce_sum(tf.abs(W_conv1)) +tf.reduce_sum(tf.abs(W_conv2)))                  
-        optimizer = tf.train.MomentumOptimizer(learning_rate=eta_model,
-                                               momentum=momentum_model)
-        # optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
+        # optimizer = tf.train.MomentumOptimizer(learning_rate=eta_model,
+        #                                        momentum=momentum_model)
+        optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
 
         self._train_op = optimizer.minimize(cost + norm_w * lam_model)
         self._predict_op = h_max
@@ -274,22 +274,21 @@ class Deepbind_CNN_model(object):
         #Taking max of rectified output was giving poor performance
         h_max = tf.reduce_max(h_conv2+b_conv2, reduction_indices=[1, 2, 3], name='h_max')
         h_avg = tf.reduce_mean(h_conv2+b_conv2, reduction_indices=[1, 2, 3], name='h_avg')
-        W_final = tf.Variable(tf.random_normal([2], stddev=0.01))
+        W_final = tf.Variable(tf.random_normal([2,1], stddev=0.01))
         b_final = tf.Variable(tf.constant(0.001, shape=[]))
 
-        h_final = tf.mul(tf.pack([h_max,h_avg]),W_final) + b_final
+        h_final = tf.squeeze(tf.matmul(tf.pack([h_max, h_avg], axis=1), W_final) + b_final)
 
 
         # Output has shape None and is a vector of length minib
 
-        cost_batch = tf.square(h_max - y_true)
-        # cost_batch = tf.square(h_final - y_true)
+        # cost_batch = tf.square(h_max - y_true)
+        cost_batch = tf.square(h_final - y_true)
         self._cost = cost = tf.reduce_mean(cost_batch)
         # tf.scalar_summary("Training Loss", cost)
         norm_w = (tf.reduce_sum(tf.abs(W_conv1)) +tf.reduce_sum(tf.abs(W_conv2)))
                   
-        optimizer = tf.train.MomentumOptimizer(learning_rate=eta_model,
-                                               momentum=momentum_model)
+        optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
         # optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
 
         
@@ -419,8 +418,8 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
         cost_test = cost_test/Nbatch_test
         pearson_test = pearson_test/Nbatch_test
         if verbose:
-            print ("Epoch:%04d, Train cost(avg)=%0.4f, Test cost(avg)=%0.4f, Test Pearson(avg)=%0.4f" %
-                   (epoch + 1, np.mean(cost_train), np.mean(cost_test), np.mean(pearson_test)))
+            print ("Epoch:%04d, Train cost(min)=%0.4f, Test cost(min)=%0.4f, Test Pearson(max)=%0.4f" %
+                   (epoch + 1, np.min(cost_train), np.min(cost_test), np.max(pearson_test)))
             print(pearson_test)
         return (cost_train, cost_test, pearson_test)
     return cost_train
@@ -747,9 +746,9 @@ def load_data(target_id_list=None, fold_filter='A'):
 def generate_configs_CNN(num_calibrations, flag='small'):
     configs = []
     for i in range(num_calibrations):
-        eta = np.float32(10**(np.random.uniform(-4,-6)))
+        eta = np.float32(10**(np.random.uniform(-2,-6)))
         momentum = np.float32(np.random.uniform(0.95,0.99))
-        lam = np.float32(10**(np.random.uniform(-3,-10)))
+        lam = np.float32(10**(np.random.uniform(-2,-6)))
         init_scale = np.float32(10**(np.random.uniform(-7,-3)))
         minib = 100
         test_interval = 10
@@ -765,9 +764,9 @@ def generate_configs_CNN(num_calibrations, flag='small'):
 def generate_configs_CNN_struct(num_calibrations, flag='small'):
     configs = []
     for i in range(num_calibrations):
-        eta = np.float32(10**(np.random.uniform(-4,-6)))
+        eta = np.float32(10**(np.random.uniform(-2,-6)))
         momentum = np.float32(np.random.uniform(0.95,0.99))
-        lam = np.float32(10**(np.random.uniform(-3,-10)))
+        lam = np.float32(10**(np.random.uniform(-2,-6)))
         init_scale = np.float32(10**(np.random.uniform(-7,-3)))
         minib = 100
         test_interval = 10

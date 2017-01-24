@@ -188,7 +188,7 @@ if __name__ == "__main__":
     training = True
     if training:
         for protein in targets:
-            main( target_protein=protein, model_size_flag='large')
+            main( target_protein=protein, model_size_flag='small')
     if testing:
         result_file = open('../results_final/summary.tsv', 'w')
         heading  = 'Protein\t' + '\t'.join(models) +'\n'
