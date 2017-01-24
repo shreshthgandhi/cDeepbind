@@ -15,7 +15,7 @@ import argparse
 def main(target_protein='RNCMPT00168', model_size_flag ='small'):
     calibration_flag = True
     # model_size_flag = 'small'
-    model_testing_list = ['CNN_struct', 'CNN']
+    model_testing_list = ['RNN_struct','CNN_struct', 'CNN']
     traindir = {}
     for model_type in model_testing_list:
         model_dir = os.path.join('../models/'+target_protein+'/'+model_type, datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
@@ -49,7 +49,7 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small'):
             input_data[model_type] = utils.Deepbind_input(input_config, inf, model_type, validation=False)
             models = []
             for runs in range(num_final_runs):
-                with tf.name_scope('model'+str(runs)):
+                with tf.variable_scope('model'+str(runs)):
                     models.append(utils.Deepbind_model(best_config[model_type],
                                                               input_data[model_type],
                                                               model_type))
@@ -59,10 +59,11 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small'):
             #                                               model_type)
 
             with tf.Session()    as session:
+                print("learning_rate=%.6f"% best_config[model_type].eta_model)
                 (best_pearson, last_pearson, best_epoch) = \
                     utils.train_model_parallel(session, best_config[model_type],
                                                models, input_data[model_type],
-                                               early_stop=True)
+                                               early_stop=False)
                 best_model = np.argmax(last_pearson)
                 best_model_vars = tf.contrib.framework.get_variables(scope='model' + str(best_model))
                 saver = tf.train.Saver(best_model_vars)
@@ -188,7 +189,7 @@ if __name__ == "__main__":
     training = True
     if training:
         for protein in targets:
-            main( target_protein=protein, model_size_flag='small')
+            main( target_protein=protein, model_size_flag='large')
     if testing:
         result_file = open('../results_final/summary.tsv', 'w')
         heading  = 'Protein\t' + '\t'.join(models) +'\n'

@@ -1,22 +1,30 @@
 #!/usr/bin/env bash
-declare -a protein_list=('RNCMPT00100'
-                     'RNCMPT00101'
-                     'RNCMPT00102'
-                     'RNCMPT00103'
-                     'RNCMPT00104'
-                     'RNCMPT00105'
-                     'RNCMPT00106'
-                     'RNCMPT00107'
-                     'RNCMPT00108'
-                     'RNCMPT00109'
-                     'RNCMPT00010'
-                     'RNCMPT00110'
-                     'RNCMPT00111'
-                     'RNCMPT00112'
-                     'RNCMPT00113'
-                     'RNCMPT00114'
-                     'RNCMPT00116'
-                     'RNCMPT00117')
+#declare -a protein_list=('RNCMPT00100'
+#                     'RNCMPT00101'
+#                     'RNCMPT00102'
+#                     'RNCMPT00103'
+#                     'RNCMPT00104'
+#                     'RNCMPT00105'
+#                     'RNCMPT00106'
+#                     'RNCMPT00107'
+#                     'RNCMPT00108'
+#                     'RNCMPT00109'
+#                     'RNCMPT00010'
+#                     'RNCMPT00110'
+#                     'RNCMPT00111'
+#                     'RNCMPT00112'
+#                     'RNCMPT00113'
+#                     'RNCMPT00114'
+#                     'RNCMPT00116'
+#                     'RNCMPT00117')
+
+declare -a protein_list=('RNCMPT00289'
+'RNCMPT00158'
+'RNCMPT00258'
+'RNCMPT00081'
+'RNCMPT00147')
+
+
 #declare -a protein_list=('RNCMPT00100')
 declare GPUS=2
 
