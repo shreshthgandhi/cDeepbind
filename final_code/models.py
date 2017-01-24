@@ -154,8 +154,10 @@ class Deepbind_CNN_struct_model(object):
         # minib = config.minib
         seq_length = input_.seq_length
         
-        m = config.motif_len  # Tunable Motif length
-        d = config.num_motifs  # Number of tunable motifs
+        self.motif_len = config.motif_len  # Tunable Motif length
+        self.num_motifs = config.num_motifs  # Number of tunable motifs
+        self.motif_len2 = config.motif_len
+        self.num_motifs2 = config.num_motifs
         m2 = 4  # Filter size for 2 conv net
         self._init_op = tf.initialize_all_variables()
 
@@ -164,13 +166,13 @@ class Deepbind_CNN_struct_model(object):
 
         x_image = tf.reshape(x, [-1, seq_length, 1, 9])
 
-        W_conv1 = tf.Variable(tf.random_normal([m, 1, 9, d], stddev=0.01), name='W_Conv1')
-        b_conv1 = tf.Variable(tf.constant(0.001, shape=[d]), name='b_conv1')
+        W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 9, self.num_motifs], stddev=0.01), name='W_Conv1')
+        b_conv1 = tf.Variable(tf.constant(0.001, shape=[self.num_motifs]), name='b_conv1')
 
         h_conv1 = tf.nn.conv2d(x_image, W_conv1,
                        strides=[1, 1, 1, 1], padding='SAME')
         h_relu_conv1 = tf.nn.relu(h_conv1 + b_conv1, name='First_layer_output')
-        W_conv2 = tf.Variable(tf.random_normal([m2, 1, d, 1]), name='W_conv2')
+        W_conv2 = tf.Variable(tf.random_normal([self.motif_len2, 1, self.num_motifs2, 1]), name='W_conv2')
         b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name= 'b_conv2')
         h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
                                strides=[1, 1, 1, 1], padding='SAME')
@@ -541,6 +543,7 @@ def save_calibration(protein, model_type,flag, config,new_metric, save_dir):
                  early_stop_epochs = config.early_stop_epochs,
                  metric = new_metric
                  )
+
 def load_calibration(protein, model_type, flag, save_dir):
     file_name = os.path.join(save_dir, protein) + model_type + '.npz'
     if not os.path.isfile(file_name):
@@ -562,6 +565,19 @@ def load_calibration(protein, model_type, flag, save_dir):
     config_new.epochs = inf['epochs']
     config_new.early_stop_epochs = inf['early_stop_epochs']
     return config_new
+
+def conv2d(input_, output_dim,
+           k_h=5, k_w=5, d_h=1, d_w=1, stddev=0.02,
+           name="conv2d"):
+    with tf.variable_scope(name):
+        w = tf.get_variable('w_conv', [k_h, k_w, input_.get_shape()[-1], output_dim],
+                            initializer=tf.truncated_normal_initializer(stddev=stddev))
+
+
+        biases = tf.get_variable('bias_conv', [output_dim], initializer=tf.constant_initializer(0.01))
+        # conv = tf.reshape(tf.nn.bias_add(conv, biases), conv.get_shape())
+        conv = tf.nn.conv2d(input_, w, strides=[1, d_h, d_w, 1], padding='SAME')+biases
+        return conv
 
 
 
@@ -1030,6 +1046,53 @@ def summarize(save_path='../results_final/'):
                     read_file = np.load(save_path+protein+model+'.npz')
                     result_file.write('\t'+str(read_file['pearson']))
             result_file.write('\n')
+
+def summarize2(model_path):
+    # proteins = os.listdir(model_path)
+    proteins = new_listdir(model_path)
+    values = {}
+    for protein in proteins:
+        values[protein] = {}
+        models = new_listdir(os.path.join(model_path, protein))
+        for model in models:
+            values[protein][model]=0
+            trials =new_listdir(os.path.join(model_path,protein,model))
+            for trial in trials:
+                result_file = os.path.join(model_path,protein,model,trial,'results_final')
+                if os.path.exists(result_file):
+                    values[protein]['complete']=True
+                else:
+                    values[protein]['complete']=False
+                if values[protein]['complete']:
+                    val = np.load(result_file+'/'+protein+model+'.npz')['pearson']
+                    if val >=values[protein][model]:
+                        values[protein][model] = val
+    result_file = open(model_path + '/summary.tsv', 'w')
+
+    heading = 'Protein\t' + '\t'.join(models) + '\n'
+    print(heading)
+    result_file.write(heading)
+    for protein in proteins:
+        if values[protein]['complete']:
+            line = protein+ '\t' +'\t'.join([str(values[protein][model]) for model in models ])+'\n'
+            result_file.write(line)
+            print(line)
+
+def new_listdir(path):
+    dir_list = os.listdir(path)
+    dir_list_new = []
+    for dir in dir_list:
+        if os.path.isdir(os.path.join(path,dir)):
+            dir_list_new.append(dir)
+    return dir_list_new
+
+
+
+
+
+
+
+
 
 
 
