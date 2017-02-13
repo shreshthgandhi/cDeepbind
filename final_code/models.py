@@ -442,9 +442,6 @@ class Deepbind_RNN_struct_model(object):
         return self._y_true
 
 
-
-
-
 def Deepbind_model(config, input, model_type):
     if model_type == 'CNN':
         return Deepbind_CNN_model(config, input)
@@ -1188,13 +1185,14 @@ def summarize2(model_path):
                     if val >=values[protein][model]:
                         values[protein][model] = val
     result_file = open(model_path + '/summary.tsv', 'w')
+    models = ['RNN_struct','CNN_struct','CNN']
 
     heading = 'Protein\t' + '\t'.join(models) + '\n'
     print(heading)
     result_file.write(heading)
     for protein in proteins:
         if values[protein]['complete']:
-            line = protein+ '\t' +'\t'.join([str(values[protein][model]) for model in models ])+'\n'
+            line = protein+ '\t' +'\t'.join([str(values[protein].get(model,' ')) for model in models])+'\n'
             result_file.write(line)
             print(line)
 

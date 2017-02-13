@@ -11,7 +11,7 @@ for i in "${protein_list[@]}"
 do
 #    for gpu in $(seq 0 $GPUS)
 #    do
-python Main_structure.py --gpus 2 --protein $i &&
+python Main_structure.py --gpus 2 --protein $i --model_type RNN_struct &&
 echo $i
 #    done
 done
