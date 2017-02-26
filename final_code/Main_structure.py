@@ -13,6 +13,7 @@ from datetime import  datetime
 
 def main(target_protein='RNCMPT00168', model_size_flag ='small'):
     calibration_flag = True
+
     # model_size_flag = 'small'
     model_testing_list = ['CNN_struct', 'CNN']
     traindir = {}
