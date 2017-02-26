@@ -144,7 +144,8 @@ def calibrate_model(target_protein='RNCMPT00168', num_calibrations=5,
             with tf.Graph().as_default():
                 models = []
                 for i in range(num_calibrations):
-                    models.append(utils.Deepbind_model(configs[i], inputs[fold], model_type))
+                    with tf.variable_scope('model' + str(i)):
+                        models.append(utils.Deepbind_model(configs[i], inputs[fold], model_type))
                 with tf.Session() as session:
                     (best_pearson[model_type][:,fold],
                      last_pearson[model_type][:,fold],
