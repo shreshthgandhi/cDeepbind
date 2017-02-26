@@ -10,21 +10,32 @@ import models as utils
 import os.path
 from datetime import  datetime
 import argparse
-# %matplotlib inline
 
-def main(target_protein='RNCMPT00168', model_size_flag ='small'):
+
+def main(target_protein='RNCMPT00168', model_size_flag ='small', model_type=None, num_calibrations=5):
     calibration_flag = True
     # model_size_flag = 'small'
-    model_testing_list = ['CNN_struct', 'CNN']
+    if model_type:
+        model_testing_list = [model_type]
+    else:
+        model_testing_list = ['CNN_struct','CNN']
     traindir = {}
     for model_type in model_testing_list:
         model_dir = os.path.join('../models/'+target_protein+'/'+model_type, datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
         os.makedirs(model_dir)
         traindir[model_type] = model_dir
+    best_config = {}
+    calibration_flag=False
+    for model in model_testing_list:
+        calib_temp = utils.load_calibration(protein, model, model_size_flag, 'calibrations')
+        if calib_temp:
+            best_config[model]=calib_temp
+        else:
+            calibration_flag=True
 
     if calibration_flag:
         best_config, best_metric = calib.calibrate_model(target_protein,
-                                                         num_calibrations=10,
+                                                         num_calibrations=5,
                                                          model_testing_list=model_testing_list,
                                                          flag=model_size_flag)
     # if not(calibration_flag):
@@ -49,7 +60,7 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small'):
             input_data[model_type] = utils.Deepbind_input(input_config, inf, model_type, validation=False)
             models = []
             for runs in range(num_final_runs):
-                with tf.name_scope('model'+str(runs)):
+                with tf.variable_scope('model'+str(runs)):
                     models.append(utils.Deepbind_model(best_config[model_type],
                                                               input_data[model_type],
                                                               model_type))
@@ -59,10 +70,11 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small'):
             #                                               model_type)
 
             with tf.Session()    as session:
+                print("learning_rate=%.6f"% best_config[model_type].eta_model)
                 (best_pearson, last_pearson, best_epoch) = \
                     utils.train_model_parallel(session, best_config[model_type],
                                                models, input_data[model_type],
-                                               early_stop=True)
+                                               early_stop=False)
                 best_model = np.argmax(last_pearson)
                 best_model_vars = tf.contrib.framework.get_variables(scope='model' + str(best_model))
                 saver = tf.train.Saver(best_model_vars)
@@ -176,6 +188,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpus', default=None, type=int, nargs='+')
     parser.add_argument('--protein', default=None)
+    parser.add_argument('--model_type', default=None)
+    parser.add_argument('--num_calibrations', default=5, type=int)
     args = parser.parse_args()
     if args.gpus is not None:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, args.gpus))
@@ -183,12 +197,13 @@ if __name__ == "__main__":
         targets = [args.protein]
     else:
         targets = ['RNCMPT00158']
-    models = ['CNN_struct', 'CNN']
+    models = ['RNN_struct']
     testing = False
     training = True
     if training:
         for protein in targets:
-            main( target_protein=protein, model_size_flag='large')
+            main( target_protein=protein, model_size_flag='medium',
+                  model_type=args.model_type, num_calibrations=args.num_calibrations)
     if testing:
         result_file = open('../results_final/summary.tsv', 'w')
         heading  = 'Protein\t' + '\t'.join(models) +'\n'
