@@ -10,12 +10,9 @@ import models as utils
 import os.path
 from datetime import  datetime
 import argparse
-# %matplotlib inline
 
 def main(target_protein='RNCMPT00168', model_size_flag ='small', model_type=None, num_calibrations=5):
     calibration_flag = True
-
-    # model_size_flag = 'small'
     if model_type:
         model_testing_list = [model_type]
     else:
@@ -25,6 +22,14 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small', model_type=None
         model_dir = os.path.join('../models/'+target_protein+'/'+model_type, datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
         os.makedirs(model_dir)
         traindir[model_type] = model_dir
+    best_config = {}
+    calibration_flag=False
+    for model in model_testing_list:
+        calib_temp = utils.load_calibration(protein, model, model_size_flag, 'calibrations')
+        if calib_temp:
+            best_config[model]=calib_temp
+        else:
+            calibration_flag=True
 
     if calibration_flag:
         best_config, best_metric = calib.calibrate_model(target_protein,
