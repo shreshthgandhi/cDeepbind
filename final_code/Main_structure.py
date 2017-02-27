@@ -1,77 +1,74 @@
 import tensorflow as tf
 import numpy as np
-import scipy as Sci
-import sys
-from sklearn import cross_validation
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
 import calibrate_model as calib
 import models as utils
 import os.path
 from datetime import  datetime
 import argparse
-# %matplotlib inline
 
-def main(target_protein='RNCMPT00168', model_size_flag ='small', model_type=None, num_calibrations=5):
-    calibration_flag = True
-    # model_size_flag = 'small'
-    if model_type:
-        model_testing_list = [model_type]
-    else:
-        model_testing_list = ['CNN_struct','CNN']
+def main(target_protein=None, model_size_flag =None, model_testing_list=None, num_calibrations=5,recalibrate=False):
     traindir = {}
     for model_type in model_testing_list:
         model_dir = os.path.join('../models/'+target_protein+'/'+model_type, datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
         os.makedirs(model_dir)
         traindir[model_type] = model_dir
+    best_config = {}
 
-    if calibration_flag:
-        best_config, best_metric = calib.calibrate_model(target_protein,
-                                                         num_calibrations=5,
-                                                         model_testing_list=model_testing_list,
-                                                         flag=model_size_flag)
-    # if not(calibration_flag):
-    #     config = best_config(target_protein, model_testing_list)
-    # load_data_rnac(target_id_list=target_protein)
-    # config = best_config
+    for model_type in model_testing_list:
+        calib_temp = utils.load_calibration(target_protein, model_type, model_size_flag, '../calibrations')
+        if recalibrate:
+            best_config[model_type], _, _ = calib.calibrate_model(target_protein,
+                                                                  num_calibrations=5,
+                                                                  model_type=model_type,
+                                                                  flag=model_size_flag)
+
+        elif calib_temp:
+            best_config[model_type]=calib_temp
+        else:
+            best_config[model_type], _, _ = calib.calibrate_model(target_protein,
+                                                                  num_calibrations=5,
+                                                                  model_type=model_type,
+                                                                  flag=model_size_flag)
+
     target_file = '../data/rnac/npz_archives/' + str(target_protein) + '.npz'
     if not(os.path.isfile(target_file)):
         utils.load_data(target_id_list=[target_protein])
     inf = np.load(target_file)
-    models = {}
+    models = []
+    inputs =[]
     input_data = {}
     num_final_runs = 3
+    test_epochs = best_config[model_testing_list[0]].epochs // best_config[model_testing_list[0]].test_interval
+    total_num_models = num_final_runs * len(model_testing_list)
+    test_pearson = np.zeros([total_num_models,test_epochs])
+    test_cost = np.zeros([total_num_models,test_epochs])
 
     input_config = utils.input_config(model_size_flag)
 
-    for model_type in model_testing_list:
-        best_pearson = np.zeros([num_final_runs])
-        last_pearson = np.zeros([num_final_runs])
-        best_epoch = np.zeros([num_final_runs])
-        with tf.Graph().as_default():
+    with tf.Graph().as_default():
+        for i,model_type in enumerate(model_testing_list):
             input_data[model_type] = utils.Deepbind_input(input_config, inf, model_type, validation=False)
-            models = []
             for runs in range(num_final_runs):
-                with tf.variable_scope('model'+str(runs)):
+                with tf.variable_scope('model'+str(runs+i*num_final_runs)):
                     models.append(utils.Deepbind_model(best_config[model_type],
                                                               input_data[model_type],
                                                               model_type))
-            # with tf.variable_scope("Model", reuse=True):
-            #     models[model_type] = utils.Deepbind_model(best_config[model_type],
-            #                                               input_data[model_type],
-            #                                               model_type)
+                    inputs.append(input_data[model_type])
+        with tf.Session()   as session:
+            # print("learning_rate=%.6f"% best_config[model_type].eta_model)
+            (test_cost,test_pearson) = \
+                utils.train_model_parallel(session, best_config[model_type],
+                                           models, inputs,
+                                           early_stop=False)
+            for i,model_type in enumerate(model_testing_list):
+                best_model_idx = np.argmin(test_cost[i*num_final_runs:(i+1)*num_final_runs,-1])
 
-            with tf.Session()    as session:
-                print("learning_rate=%.6f"% best_config[model_type].eta_model)
-                (best_pearson, last_pearson, best_epoch) = \
-                    utils.train_model_parallel(session, best_config[model_type],
-                                               models, input_data[model_type],
-                                               early_stop=False)
-                best_model = np.argmax(last_pearson)
-                best_model_vars = tf.contrib.framework.get_variables(scope='model' + str(best_model))
+                abs_best_model_idx = i*num_final_runs + best_model_idx
+                best_model_vars = tf.contrib.framework.get_variables(scope='model' + str(abs_best_model_idx))
                 saver = tf.train.Saver(best_model_vars)
-                model_best_id = traindir[model_type] + '/'+target_protein +  'best_model.ckpt'
-                saver.save(session,model_best_id)
+                # model_best_id = traindir[model_type] + '/'+target_protein +  'best_model.ckpt'
+
+                saver.save(session,os.path.join(traindir[model_type],target_protein+'_best_model.ckpt'))
             # for runs in range(num_final_runs):
             #     # input_data[model_type] = utils.Deepbind_input(input_config, inf, model_type, validation=False)
             #     # models[model_type].input = input_data[model_type]
@@ -89,126 +86,41 @@ def main(target_protein='RNCMPT00168', model_size_flag ='small', model_type=None
             #                                           early_stop=True)
             #         model_id = '../tmp/'+target_protein+str(runs)+'.ckpt'
             #         saver.save(session, model_id)
-
-            print("Pearson correlation for %s using %s is %.4f"%(target_protein,model_type, np.max(last_pearson)))
-            result_id = traindir[model_type]+'/results_final/'+target_protein+str(model_type)
-            os.makedirs(traindir[model_type]+'/results_final/')
-            np.savez(result_id, pearson = np.max(last_pearson))
-
-
+                pearson = test_pearson[abs_best_model_idx,-1]
+                cost = test_cost[abs_best_model_idx,-1]
+                print("Pearson correlation for %s using %s is %.4f"%(target_protein,model_type, test_pearson[abs_best_model_idx,-1]))
+                result_id = traindir[model_type]+'/results_final/'+target_protein+str(model_type)
+                utils.save_result(target_protein, model_type,model_size_flag,cost,pearson,'../results_final')
 
 
-            # with tf.Session() as sess:
-            #     # saver = tf.train.Saver()
-            #     saver.restore(sess, model_best_id)
-            #     model_final_location = '../models/' + target_protein+'.ckpt'
-            #     saver.save(sess, model_final_location)
 
-
-        # saver = tf.train.Saver()
-        # for model in model_testing_list:
-        #     with tf.Session() as session:
-        #         session.run(tf.initialize_all_variables())
-        #         for i in range(config.epochs):
-        #             _ = run_epoch(session,models[model],i, eval_op=models[model].train_op)
-        #             if i%config.test_interval == 0:
-        #                 (cost_train, cost_test, pearson_test) = run_epoch(session,
-        #                                                                 models[model],
-        #                                                                 i,
-        #                                                                 verbose=True,
-        #                                                                 testing=True)
-        #         print("Saving model")
-        #         saver.save(session, 'model/'+target_protein[0], global_step = i)
-        #         result_id = 'results/'+target_protein[0]+'_'+str(i)
-        #         
 if __name__ == "__main__":
-    # main()
-    # targets = ['RNCMPT00168', 'RNCMPT00076', 'RNCMPT00268', 'RNCMPT00038', 'RNCMPT00111']
-    # targets = ['RNCMPT00100',
-    #                  'RNCMPT00101',
-    #                  'RNCMPT00102',
-    #                  'RNCMPT00103',
-    #                  'RNCMPT00104',
-    #                  'RNCMPT00105',
-    #                  'RNCMPT00106',
-    #                  'RNCMPT00107',
-    #                  'RNCMPT00108',
-    #                  'RNCMPT00109',
-    #                  'RNCMPT00010',
-    #                  'RNCMPT00110',
-    #                  'RNCMPT00111',
-    #                  'RNCMPT00112',
-    #                  'RNCMPT00113',
-    #                  'RNCMPT00114',
-    #                  'RNCMPT00116',
-    #                  'RNCMPT00117',
-    #                  'RNCMPT00118',
-    #                  'RNCMPT00119',
-    #                  'RNCMPT00011',
-    #                  'RNCMPT00120',
-    #                  'RNCMPT00121',
-    #                  'RNCMPT00122',
-    #                  'RNCMPT00123',
-    #                  'RNCMPT00124',
-    #                  'RNCMPT00126',
-    #                  'RNCMPT00127',
-    #                  'RNCMPT00129',
-    #                  'RNCMPT00012',
-    #                  'RNCMPT00131',
-    #                  'RNCMPT00132',
-    #                  'RNCMPT00133',
-    #                  'RNCMPT00134',
-    #                  'RNCMPT00136',
-    #                  'RNCMPT00137',
-    #                  'RNCMPT00138',
-    #                  'RNCMPT00139',
-    #                  'RNCMPT00013',
-    #                  'RNCMPT00140',
-    #                  'RNCMPT00141',
-    #                  'RNCMPT00142',
-    #                  'RNCMPT00143',
-    #                  'RNCMPT00144',
-    #                  'RNCMPT00145',
-    #                  'RNCMPT00146',
-    #                  'RNCMPT00147',
-    #                  'RNCMPT00148',
-    #                  'RNCMPT00149',
-    #                  'RNCMPT00014',
-    #                  'RNCMPT00150',
-    #                  'RNCMPT00151',
-    #                  'RNCMPT00152',]
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpus', default=None, type=int, nargs='+')
     parser.add_argument('--protein', default=None)
-    parser.add_argument('--model_type', default=None)
+    parser.add_argument('--model_type', default=None,nargs='+')
     parser.add_argument('--num_calibrations', default=5, type=int)
+    parser.add_argument('--model_scale',default=None)
+    parser.add_argument('--recalibrate', default=False)
     args = parser.parse_args()
     if args.gpus is not None:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, args.gpus))
-    if args.protein:
-        targets = [args.protein]
-    else:
-        targets = ['RNCMPT00158']
-    models = ['RNN_struct']
-    testing = False
-    training = True
-    if training:
-        for protein in targets:
-            main( target_protein=protein, model_size_flag='medium',
-                  model_type=args.model_type, num_calibrations=args.num_calibrations)
-    if testing:
-        result_file = open('../results_final/summary.tsv', 'w')
-        heading  = 'Protein\t' + '\t'.join(models) +'\n'
-        result_file.write(heading)
-        for protein in targets:
-            # print(protein)
-            inf = {}
-            for model_type in models:
-                inf[model_type] = np.load('../results_final/'+protein+model_type+'.npz')
-            # result_file = open('../results/final/summary.log','w')
-            # result_file.write(heading)
-            values = protein + '\t'+ '\t'.join([str(inf[model_type]['pearson']) for model_type in models])+'\n'
-            result_file.write(values)
-            # for model_type in models:
-            #     print(model_type)
-            #     print(inf[model_type]['pearson'])
+    main( target_protein=args.protein, model_size_flag=args.model_scale,
+                  model_testing_list=args.model_type, num_calibrations=args.num_calibrations,
+                    recalibrate=args.recalibrate)
+    # if testing:
+    #     result_file = open('../results_final/summary.tsv', 'w')
+    #     heading  = 'Protein\t' + '\t'.join(models) +'\n'
+    #     result_file.write(heading)
+    #     for protein in targets:
+    #         # print(protein)
+    #         inf = {}
+    #         for model_type in models:
+    #             inf[model_type] = np.load('../results_final/'+protein+model_type+'.npz')
+    #         # result_file = open('../results/final/summary.log','w')
+    #         # result_file.write(heading)
+    #         values = protein + '\t'+ '\t'.join([str(inf[model_type]['pearson']) for model_type in models])+'\n'
+    #         result_file.write(values)
+    #         # for model_type in models:
+    #         #     print(model_type)
+    #         #     print(inf[model_type]['pearson'])

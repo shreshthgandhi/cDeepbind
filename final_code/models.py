@@ -143,17 +143,12 @@ def Deepbind_input(config,inf,model,validation=False,fold_id=1):
 class Deepbind_CNN_struct_model(object):
     """The deepbind_CNN model with structure"""
     def __init__(self, config, input_):
-        # type: (object, object) -> object
-        # self._input = input_
+
         self._config = config
-#         batch_size = input_.batch_size
         eta_model = config.eta_model
         momentum_model = config.momentum_model
         lam_model = config.lam_model
-        # epochs = config.epochs
-        # training_cases = input_.training_cases
-        # test_cases = input_.test_cases
-        # minib = config.minib
+
         seq_length = input_.seq_length
         
         self.motif_len = config.motif_len  # Tunable Motif length
@@ -161,7 +156,7 @@ class Deepbind_CNN_struct_model(object):
         self.motif_len2 = config.motif_len
         self.num_motifs2 = config.num_motifs
         m2 = 4  # Filter size for 2 conv net
-        self._init_op = tf.initialize_all_variables()
+        self._init_op = tf.global_variables_initializer()
 
         self._x = x = tf.placeholder(tf.float32, shape=[None, seq_length, 9], name='One_hot_data')
         self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
@@ -182,11 +177,11 @@ class Deepbind_CNN_struct_model(object):
         h_relu_conv2 = tf.nn.relu(h_conv2 + b_conv2)
         # h_max=tf.reduce_max(h_relu_conv2,reduction_indices=[1,2,3]) 
         #Taking max of rectified output was giving poor performance
-        h_max = tf.reduce_max(h_conv2+b_conv2, reduction_indices=[1, 2, 3], name='h_max')
-        h_avg = tf.reduce_mean(h_conv2+b_conv2, reduction_indices=[1, 2, 3], name='h_avg')
+        h_max = tf.reduce_max(h_conv2+b_conv2, axis=[1, 2, 3], name='h_max')
+        h_avg = tf.reduce_mean(h_conv2+b_conv2, axis=[1, 2, 3], name='h_avg')
         W_final = tf.Variable(tf.random_normal([2,1], stddev=0.1))
         b_final = tf.Variable(tf.constant(0.001, shape=[]))
-        h_final = tf.squeeze(tf.matmul(tf.pack([h_max,h_avg],axis=1),W_final) + b_final)
+        h_final = tf.squeeze(tf.matmul(tf.stack([h_max,h_avg],axis=1),W_final) + b_final)
         # Output has shape None and is a vector of length minib
 
         # cost_batch = tf.square(h_max - y_true)
@@ -200,6 +195,16 @@ class Deepbind_CNN_struct_model(object):
 
         self._train_op = optimizer.minimize(cost + norm_w * lam_model)
         self._predict_op = h_final
+
+        # summaries = []
+        #
+        # summaries.append(tf.summary.scalar('cost', self.cost))
+        # summaries.append(tf.summary.histogram('first_layer', h_relu_conv1))
+        # summaries.append(tf.summary.histogram('max_output', h_max))
+        # summaries.append(tf.summary.histogram('avg_output', h_avg))
+        # summaries.append(tf.summary.histogram('final_layer', h_final))
+
+        # self.summary_op = tf.summary.merge(summaries)
     def initialize(self, session):
         session.run(self._init_op)
 
@@ -238,22 +243,17 @@ class Deepbind_CNN_model(object):
     """The deepbind_CNN model without structure"""
     def __init__(self, config, input_):
         self._input = input_
-#         batch_size = input_.batch_size
+
         self._config = config
         eta_model = config.eta_model
-        momentum_model = config.momentum_model
         lam_model = config.lam_model
-        epochs = config.epochs
-        training_cases = input_.training_cases
-        test_cases = input_.test_cases
-        minib = config.minib
         seq_length = input_.seq_length
 
         m = 16  # Tunable Motif length
         d = 10  # Number of tunable motifs
         m2 = 4  # Filter size for 2 conv net
         
-        self._init_op = tf.initialize_all_variables()
+        self._init_op = tf.global_variables_initializer()
 
         self._x = x = tf.placeholder(tf.float32, shape=[None, seq_length, 4], name='One_hot_data')
         self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
@@ -274,12 +274,12 @@ class Deepbind_CNN_model(object):
         h_relu_conv2 = tf.nn.relu(h_conv2 + b_conv2)
         # h_max=tf.reduce_max(h_relu_conv2,reduction_indices=[1,2,3]) 
         #Taking max of rectified output was giving poor performance
-        h_max = tf.reduce_max(h_conv2+b_conv2, reduction_indices=[1, 2, 3], name='h_max')
-        h_avg = tf.reduce_mean(h_conv2+b_conv2, reduction_indices=[1, 2, 3], name='h_avg')
+        h_max = tf.reduce_max(h_conv2+b_conv2, axis=[1, 2, 3], name='h_max')
+        h_avg = tf.reduce_mean(h_conv2+b_conv2, axis=[1, 2, 3], name='h_avg')
         W_final = tf.Variable(tf.random_normal([2,1], stddev=0.1))
         b_final = tf.Variable(tf.constant(0.001, shape=[]))
 
-        h_final = tf.squeeze(tf.matmul(tf.pack([h_max, h_avg], axis=1), W_final) + b_final)
+        h_final = tf.squeeze(tf.matmul(tf.stack([h_max, h_avg], axis=1), W_final) + b_final)
 
 
         # Output has shape None and is a vector of length minib
@@ -297,6 +297,17 @@ class Deepbind_CNN_model(object):
         
         self._train_op = optimizer.minimize(cost + norm_w * lam_model)
         self._predict_op = h_final
+
+        # summaries = []
+        #
+        # summaries.append(tf.summary.scalar('cost',self.cost))
+        # summaries.append(tf.summary.histogram('first_layer',h_relu_conv1))
+        # summaries.append(tf.summary.histogram('max_output',h_max))
+        # summaries.append(tf.summary.histogram('avg_output',h_avg))
+        # summaries.append(tf.summary.histogram('final_layer',h_final))
+        #
+        # self.summary_op = tf.summary.merge(summaries)
+
     def initialize(self, session):
         session.run(self._init_op)
     
@@ -336,25 +347,17 @@ class Deepbind_RNN_struct_model(object):
     """The deepbind_CNN model with structure"""
 
     def __init__(self, config, input_):
-        # type: (object, object) -> object
-        # self._input = input_
         self._config = config
-        #         batch_size = input_.batch_size
         eta_model = config.eta_model
         momentum_model = config.momentum_model
         lam_model = config.lam_model
-        # epochs = config.epochs
-        # training_cases = input_.training_cases
-        # test_cases = input_.test_cases
-        # minib = config.minib
         seq_length = input_.seq_length
 
         self.motif_len = config.motif_len  # Tunable Motif length
         self.num_motifs = config.num_motifs  # Number of tunable motifs
         self.motif_len2 = config.motif_len
         self.num_motifs2 = config.num_motifs
-        m2 = 4  # Filter size for 2 conv net
-        self._init_op = tf.initialize_all_variables()
+        self._init_op = tf.global_variables_initializer()
 
         self._x = x = tf.placeholder(tf.float32, shape=[None, seq_length, 9], name='One_hot_data')
         self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
@@ -377,25 +380,14 @@ class Deepbind_RNN_struct_model(object):
         W_out = tf.Variable(tf.random_normal([n_hidden,1]), name='W_hidden')
         b_out = tf.Variable(tf.constant(0.001, shape=[1]), name='b_hidden')
 
-        h_input = tf.reshape(tf.squeeze(h_conv2, squeeze_dims=[3]),[-1,1])
+        h_input = tf.reshape(tf.squeeze(h_conv2, axis=[3]),[-1,1])
         h_input = tf.matmul(h_input, W_hidden)
         h_input = tf.reshape(h_input,[-1,seq_length,n_hidden])
-        h_input = tf.unpack(value=h_input,axis=1)
-        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0)
-        outputs, states = tf.nn.rnn(lstm_cell, h_input, dtype=tf.float32)
-        h_final = tf.squeeze(tf.matmul(outputs[-1],W_out)+b_out)
+        # h_input = tf.unstack(value=h_input,axis=1)
+        lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
+        outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32)
+        h_final = tf.squeeze(tf.matmul(tf.squeeze(tf.slice(outputs,[0,tf.shape(outputs)[1]-1,0],[-1,1,-1])),W_out)+b_out)
 
-        # h_relu_conv2 = tf.nn.relu(h_conv2 + b_conv2)
-        # # h_max=tf.reduce_max(h_relu_conv2,reduction_indices=[1,2,3])
-        # # Taking max of rectified output was giving poor performance
-        # h_max = tf.reduce_max(h_conv2 + b_conv2, reduction_indices=[1, 2, 3], name='h_max')
-        # h_avg = tf.reduce_mean(h_conv2 + b_conv2, reduction_indices=[1, 2, 3], name='h_avg')
-        # W_final = tf.Variable(tf.random_normal([2, 1], stddev=0.1))
-        # b_final = tf.Variable(tf.constant(0.001, shape=[]))
-        # h_final = tf.squeeze(tf.matmul(tf.pack([h_max, h_avg], axis=1), W_final) + b_final)
-        # Output has shape None and is a vector of length minib
-
-        # cost_batch = tf.square(h_max - y_true)
         cost_batch = tf.square(h_final - y_true)
         self._cost = cost = tf.reduce_mean(cost_batch)
         # tf.scalar_summary("Training Loss", cost)
@@ -406,6 +398,14 @@ class Deepbind_RNN_struct_model(object):
 
         self._train_op = optimizer.minimize(cost + norm_w * lam_model)
         self._predict_op = h_final
+
+        # summaries = []
+        #
+        # summaries.append(tf.summary.scalar('cost', self.cost))
+        # summaries.append(tf.summary.histogram('first_layer', h_relu_conv1))
+        # summaries.append(tf.summary.histogram('final_layer', h_final))
+        #
+        # self.summary_op = tf.summary.merge(summaries)
 
     def initialize(self, session):
         session.run(self._init_op)
@@ -492,23 +492,37 @@ def run_epoch(session, model, epoch, eval_op=None, verbose=False, testing=False)
 
 def run_epoch_parallel(session, models, input_data, config, epoch, train=False, verbose=False, testing=False):
     start_time  =time.time()
-    Nbatch_train = input_data.training_cases // config.minib
-    Nbatch_test = input_data.test_cases // config.minib
+    if isinstance(input_data,list):
+        Nbatch_train = input_data[0].training_cases // config.minib
+        Nbatch_test = input_data[0].test_cases // config.minib
+    else:
+        Nbatch_train = input_data.training_cases // config.minib
+        Nbatch_test = input_data.test_cases // config.minib
     minib = config.minib
     num_models = len(models)
     cost_temp = np.zeros([num_models])
 
     for step in range(Nbatch_train):
-        mbatchX_train = input_data.training_data[(minib * step): (minib * (step + 1)), :, :]
-        mbatchY_train = input_data.training_labels[(minib * step): (minib * (step + 1))]
+        # mbatchX_train = input_data.training_data[(minib * step): (minib * (step + 1)), :, :]
+        # mbatchY_train = input_data.training_labels[(minib * step): (minib * (step + 1))]
         fetches = {}
         feed_dict = {}
-        for i, model in enumerate(models):
-            feed_dict[model.x] = mbatchX_train
-            feed_dict[model.y_true] = mbatchY_train
-            fetches["cost"+str(i)] = model.cost
-            if train:
-                fetches["eval_op" +str(i)] = model.train_op
+        if isinstance(input_data,list):
+            for i,(model,input) in enumerate(zip(models,input_data)):
+                feed_dict[model.x] = input.training_data[(minib * step): (minib * (step + 1)), :, :]
+                feed_dict[model.y_true] = input.training_labels[(minib * step): (minib * (step + 1))]
+                fetches["cost" + str(i)] = model.cost
+                # fetches['summary'+str(i)]=model.summary_op
+                if train:
+                    fetches["eval_op" + str(i)] = model.train_op
+        else:
+            for i, model in enumerate(models):
+                feed_dict[model.x] = input_data.training_data[(minib * step): (minib * (step + 1)), :, :]
+                feed_dict[model.y_true] = input_data.training_labels[(minib * step): (minib * (step + 1))]
+                fetches["cost"+str(i)] = model.cost
+                # fetches['summary'+str(i)]=model.summary_op
+                if train:
+                    fetches["eval_op" +str(i)] = model.train_op
         vals = session.run(fetches, feed_dict)
         for j in range(num_models):
             cost_temp[j] += vals["cost"+str(j)]
@@ -517,18 +531,30 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
         pearson_test = np.zeros([num_models])
         cost_test = np.zeros([num_models])
         for step in range(Nbatch_test):
-            mbatchX_test = input_data.test_data[(minib * step): (minib * (step + 1)), :, :]
-            mbatchY_test = input_data.test_labels[(minib * step): (minib * (step + 1))]
+            # mbatchX_test = input_data.test_data[(minib * step): (minib * (step + 1)), :, :]
+            # mbatchY_test = input_data.test_labels[(minib * step): (minib * (step + 1))]
             feed_dict = {}
             fetches = {}
-            for i, model in enumerate(models):
-                feed_dict[model.x] = mbatchX_test
-                feed_dict[model.y_true] = mbatchY_test
-                fetches["cost"+str(i)] = model.cost
-                fetches["predictions"+str(i)] = model.predict_op
+
+            if isinstance(input_data, list):
+                for i, (model, input) in enumerate(zip(models, input_data)):
+                    feed_dict[model.x] = input.test_data[(minib * step): (minib * (step + 1)), :, :]
+                    feed_dict[model.y_true] = input.test_labels[(minib * step): (minib * (step + 1))]
+                    fetches["cost" + str(i)] = model.cost
+                    fetches["predictions" + str(i)] = model.predict_op
+            else:
+                for i, model in enumerate(models):
+                    feed_dict[model.x] = input_data.test_data[(minib * step): (minib * (step + 1)), :, :]
+                    feed_dict[model.y_true] = input_data.test_labels[(minib * step): (minib * (step + 1))]
+                    fetches["cost"+str(i)] = model.cost
+                    fetches["predictions"+str(i)] = model.predict_op
             vals = session.run(fetches, feed_dict)
 
             for j in range(num_models):
+                if isinstance(input_data,list):
+                    mbatchY_test = input_data[i].test_labels[(minib * step): (minib * (step + 1))]
+                else:
+                    mbatchY_test = input_data.test_labels[(minib * step): (minib * (step + 1))]
                 cost_test[j] += vals["cost"+str(j)]
                 pearson_test[j] += stats.pearsonr(mbatchY_test, vals["predictions"+str(j)])[0]
         cost_test = cost_test/Nbatch_test
@@ -550,7 +576,7 @@ def train_model_parallel(session, config, models, input_data, early_stop = False
     cost_train = np.zeros([test_epochs, num_models])
     cost_test = np.zeros([test_epochs, num_models])
     pearson_test = np.zeros([test_epochs, num_models])
-    session.run(tf.initialize_all_variables())
+    session.run(tf.global_variables_initializer())
     for i in range(epochs):
         _ = run_epoch_parallel(session, models, input_data, config, i, train=True)
         if i % config.test_interval == 0:
@@ -558,10 +584,12 @@ def train_model_parallel(session, config, models, input_data, early_stop = False
             (cost_train[step], cost_test[step], pearson_test[step]) = \
             run_epoch_parallel(session, models, input_data, config, i, train=False,
                                verbose=True, testing = True)
-    best_epoch = np.argmax(pearson_test, axis = 0).astype(int) *config.test_interval
-    best_pearson = np.max(pearson_test, axis = 0)
-    last_pearson = pearson_test[-1,:]
-    return (best_pearson, last_pearson, best_epoch)
+    # best_epoch = np.argmax(pearson_test, axis = 0).astype(int) *config.test_interval
+    # best_pearson = np.max(pearson_test, axis = 0)
+    # last_pearson = pearson_test[-1,:]
+    cost_test = np.transpose(cost_test,[1,0])
+    pearson_test = np.transpose(pearson_test,[1,0])
+    return (cost_test,pearson_test)
 
 def train_model(session, config, model, early_stop=False):
     # with tf.Graph().as_default():
@@ -576,7 +604,7 @@ def train_model(session, config, model, early_stop=False):
     cost_test = np.zeros([test_epochs])
     pearson_test = np.zeros([test_epochs])
     # with tf.Session() as session:
-    session.run(tf.initialize_all_variables())
+    session.run(tf.global_variables_initializer())
     for i in range(epochs):
         _ = run_epoch(session, model, i, eval_op=model.train_op)
         if i % config.test_interval == 0:
@@ -627,19 +655,18 @@ class Config_class(object):
         else:
             self.training_frac = 0.1
             self.test_frac = 0.1
-            self.epochs = 5
-            self.early_stop_epochs = 5
+            self.epochs = 4
+            self.early_stop_epochs = 4
             self.test_interval = 1
 
-def save_calibration(protein, model_type,flag, config,new_metric, save_dir):
-    file_name = os.path.join(save_dir,protein)+model_type+flag+'.npz'
-    old_metric = 0
+def save_calibration(protein, model_type,flag, config,new_cost,new_pearson, save_dir):
+    file_name = os.path.join(save_dir,protein+'_'+model_type+'_'+flag+'.npz')
     save_new = True
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     if (os.path.isfile(file_name)):
-        inf = np.load(file_name)
-        if new_metric <= inf['metric']:
+        file = np.load(file_name)
+        if new_cost >= file['cost']:
             save_new = False
 
     if (save_new):
@@ -656,11 +683,26 @@ def save_calibration(protein, model_type,flag, config,new_metric, save_dir):
                  test_frac = config.test_frac,
                  epochs = config.epochs,
                  early_stop_epochs = config.early_stop_epochs,
-                 metric = new_metric
+                 cost = new_cost,
+                 pearson = new_pearson
                  )
+def save_result(protein,model_type,flag,new_cost,new_pearson,save_dir):
+    file_name = os.path.join(save_dir, protein + '_' + model_type + '_' + flag + '.npz')
+    save_new = True
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    if (os.path.isfile(file_name)):
+        file = np.load(file_name)
+        if new_cost >= file['cost']:
+            save_new = False
 
+    if (save_new):
+        np.savez(file_name,
+                 cost=new_cost,
+                 pearson=new_pearson
+                 )
 def load_calibration(protein, model_type, flag, save_dir):
-    file_name = os.path.join(save_dir, protein) + model_type + '.npz'
+    file_name = os.path.join(save_dir, protein+'_'+model_type+'_'+flag+'.npz')
     if not os.path.isfile(file_name):
         print("[!] Model is not pre-calibrated!")
         return False
@@ -681,21 +723,36 @@ def load_calibration(protein, model_type, flag, save_dir):
     config_new.early_stop_epochs = inf['early_stop_epochs']
     return config_new
 
-def conv2d(input_, output_dim,
-           k_h=5, k_w=5, d_h=1, d_w=1, stddev=0.02,
-           name="conv2d"):
-    with tf.variable_scope(name):
-        w = tf.get_variable('w_conv', [k_h, k_w, input_.get_shape()[-1], output_dim],
-                            initializer=tf.truncated_normal_initializer(stddev=stddev))
 
 
-        biases = tf.get_variable('bias_conv', [output_dim], initializer=tf.constant_initializer(0.01))
-        # conv = tf.reshape(tf.nn.bias_add(conv, biases), conv.get_shape())
-        conv = tf.nn.conv2d(input_, w, strides=[1, d_h, d_w, 1], padding='SAME')+biases
-        return conv
+def conv1d(input,filter_width, n_output_channels,
+                     n_input_channels, stride,
+                     conv_weights_initializer, conv_biases_initializer,
+                     padding='SAME', op_name=None, no_non_linearity=False):
+    W = tf.get_variable('filters', [filter_width, n_input_channels, n_output_channels],
+                        initializer=conv_weights_initializer)
 
+    biases = tf.get_variable('biases', [n_output_channels], initializer=conv_biases_initializer)
+    if no_non_linearity:
+        output = tf.nn.conv1d(input, W, stride, padding, name=op_name) + biases
+    else:
+        output = tf.nn.relu(
+            tf.nn.conv1d(input, W, stride, padding, name=op_name) + biases)
+    return output
 
-
+def fc(input,n_hidden_units,input_dim,dropout_prob,weights_initializer, bias_initializer, no_non_linearity=False):
+    W = tf.get_variable('weights',
+                        [input_dim, n_hidden_units],
+                        initializer=weights_initializer)
+    b = tf.get_variable('biases',
+                        [n_hidden_units],
+                        initializer=bias_initializer)
+    if no_non_linearity:
+        output = tf.matmul(input, W) + b
+    else:
+        output = tf.nn.relu(tf.matmul(input, W) + b)
+        output = tf.nn.dropout(output, dropout_prob)
+    return output
 
 
 class input_config(object):

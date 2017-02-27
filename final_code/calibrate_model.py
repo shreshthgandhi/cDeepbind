@@ -109,73 +109,51 @@ import os.path
 #     return (best_pearson, last_pearson, best_epoch)
 
 def calibrate_model(target_protein='RNCMPT00168', num_calibrations=5,
-                    model_testing_list=['CNN_struct'], flag='small'):
-    print("Performing %d calibration trials for %s"%(num_calibrations, target_protein))
+                    model_type=None, flag=None):
+    print("Performing %d calibration trials for %s %s model"%(num_calibrations, target_protein,model_type))
 
-    # utils.load_data(target_id_list=[target_protein])
     target_file = '../data/rnac/npz_archives/'+str(target_protein)+'.npz'
     if not(os.path.isfile(target_file)):
         utils.load_data(target_id_list=[target_protein])
     inf = np.load(target_file)
-    config_lists = {}
-    input_lists = {}
     input_configuration = utils.input_config(flag)
-    best_pearson = {}
-    last_pearson = {}
-    best_epoch = {}
-    best_calib_idx = {}
-    best_epoch_final = {}
-    for model_type in model_testing_list:
-        config_lists[model_type] = utils.generate_configs(num_calibrations, model_type, flag)
-    for model in model_testing_list:
-        inputs = []
-        inputs.append(utils.Deepbind_input(input_configuration, inf, model, validation=True, fold_id=1))
-        inputs.append(utils.Deepbind_input(input_configuration, inf, model, validation=True, fold_id=2))
-        inputs.append(utils.Deepbind_input(input_configuration, inf, model, validation=True, fold_id=3))
-        input_lists[model] = inputs
-    for model_type in model_testing_list:
-        best_pearson[model_type] = np.zeros([num_calibrations, config_lists[model_type][0].folds])
-        last_pearson[model_type] = np.zeros([num_calibrations, config_lists[model_type][0].folds])
-        best_epoch[model_type] = np.zeros([num_calibrations, config_lists[model_type][0].folds])
+    configs = utils.generate_configs(num_calibrations, model_type, flag)
 
-        configs = config_lists[model_type]  #For each model type a list of configs
-        inputs = input_lists[model_type] #Each is a list containing the 3 folds
-        for fold in range(3):
-            with tf.Graph().as_default():
-                models = []
-                for i in range(num_calibrations):
-                    with tf.variable_scope('model' + str(i)):
-                        models.append(utils.Deepbind_model(configs[i], inputs[fold], model_type))
-                with tf.Session() as session:
-                    (best_pearson[model_type][:,fold],
-                     last_pearson[model_type][:,fold],
-                     best_epoch[model_type][:,fold]) = \
-                        utils.train_model_parallel(session, configs[0], models, inputs[fold], early_stop=False)
+    inputs = []
+    inputs.append(utils.Deepbind_input(input_configuration, inf, model_type, validation=True, fold_id=1))
+    inputs.append(utils.Deepbind_input(input_configuration, inf, model_type, validation=True, fold_id=2))
+    inputs.append(utils.Deepbind_input(input_configuration, inf, model_type, validation=True, fold_id=3))
 
-        # for cal_idx in range(num_calibrations):   #Run 3 folds for each calibration
-        #     config_calib = configs[cal_idx] #Model config for this calibration
-        #     print("%.2f%% calibrations complete for %s"%(((cal_idx+1)*100)/num_calibrations,model_type))
-        #     with tf.Graph().as_default():
-        #         models = {} #Generate 3 models, one for each fold
-        #         for fold_idx in range(config_calib.folds):
-        #             print("fold %d" %(fold_idx+1) )
-        #             with tf.variable_scope(model_type, reuse=True): #Have a different variable scope for each model type
-        #                 m = utils.Deepbind_model(config_calib, inputs[fold_idx], model_type)
-        #             with tf.Session() as session:
-        #                 (best_pearson[model_type][cal_idx][fold_idx],
-        #                 last_pearson[model_type][cal_idx][fold_idx],
-        #                 best_epoch[model_type][cal_idx][fold_idx]) = utils.train_model(session,
-        #                                                                                config_calib, m)
-        best_calib_idx[model_type] = int(np.argmax(np.mean(best_pearson[model_type], axis=1)))
-        best_fold = int(np.argmax(best_pearson[model_type][best_calib_idx[model_type]]))
-        best_epoch_final[model_type] = best_epoch[model_type][best_calib_idx[model_type]][best_fold]
-        # best_pearson[model_type] = np.mean(best_pearson[model_type], axis=1)
-        # last_pearson[model_type] = np.mean(last_pearson[model_type], axis=1)
-    best_calibrations = {}
-    for model_type in model_testing_list:
-        best_calibrations[model_type] = config_lists[model_type][best_calib_idx[model_type]]
-        best_calibrations[model_type].early_stop_epochs = int(best_epoch_final[model_type])
-        best_pearson[model_type] = np.mean(best_pearson[model_type][best_calib_idx[model_type]])
-        utils.save_calibration(target_protein,model_type,flag, best_calibrations[model_type],
-                               best_pearson[model_type],'./calibrations')
-    return (best_calibrations, best_pearson)
+    folds = configs[0].folds
+    test_epochs = configs[0].epochs // configs[0].test_interval
+    best_epoch = np.zeros([num_calibrations])
+    test_cost = np.zeros([folds,num_calibrations,test_epochs])
+    test_pearson = np.zeros([folds,num_calibrations,test_epochs])
+
+    for fold in range(folds):
+        print("Evaluating fold %d"%fold)
+        with tf.Graph().as_default():
+            models = []
+            for i in range(num_calibrations):
+                with tf.variable_scope('model' + str(i)):
+                    models.append(utils.Deepbind_model(configs[i], inputs[fold], model_type))
+            with tf.Session() as session:
+                (test_cost[fold,:,:],
+                 test_pearson[fold,:,:]) = \
+                    utils.train_model_parallel(session, configs[0], models, inputs[fold], early_stop=False)
+
+    test_cost = np.mean(np.transpose(test_cost,[1,2,0]),axis=2)
+    test_pearson = np.mean(np.transpose(test_pearson,[1,2,0]),axis=2)
+    best_epoch = np.argmin(test_cost,axis=1)
+
+    best_calibration_idx = int(np.argmin(np.min(test_cost,axis=1)))
+
+
+    best_calibration= configs[best_calibration_idx]
+    best_cost = np.min(test_cost[best_calibration_idx])
+    best_pearson = np.max(test_pearson[best_calibration_idx])
+
+    best_calibration.early_stop_epochs = int(best_epoch[best_calibration_idx])
+    utils.save_calibration(target_protein,model_type,flag, best_calibration,
+                           best_cost,best_pearson,'../calibrations')
+    return (best_calibration, best_cost,best_pearson)
