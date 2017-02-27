@@ -5,6 +5,7 @@ import models as utils
 import os.path
 from datetime import  datetime
 import argparse
+# %matplotlib inline
 
 def main(target_protein=None, model_size_flag =None, model_testing_list=None, num_calibrations=5,recalibrate=False):
     traindir = {}
