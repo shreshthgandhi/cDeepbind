@@ -56,12 +56,7 @@ class Deepbind_CNN_input(object):
             self.test_data = data_one_hot_test[0:self.test_cases]
             self.training_labels = labels_training[0:self.training_cases]
             self.test_labels = labels_test[0:self.test_cases]
-#         self.training_struct = np.transpose(structures_training[0:config.training_cases],[0,2,1])
-#         self.test_struct = np.transpose(structures_test[0:config.test_cases],[0,2,1])
-        
-#         self.training_data=np.append(self.training_data,self.training_struct,axis=2)
-#         self.test_data=np.append(self.test_data,self.test_struct,axis=2)
-        
+#
         self.seq_length = int(seq_length)
         self.training_cases = self.training_data.shape[0]
         self.test_cases = self.test_data.shape[0]
@@ -131,13 +126,13 @@ class Deepbind_CNN_struct_input(object):
         self.training_cases = self.training_data.shape[0]
         self.test_cases = self.test_data.shape[0]
 
-def Deepbind_input(config,inf,model,validation=False,fold_id=1):
+def Deepbind_input(input_config,inf,model,validation=False,fold_id=1):
     if model == 'CNN':
-        return Deepbind_CNN_input(config, inf, validation, fold_id)
+        return Deepbind_CNN_input(input_config, inf, validation, fold_id)
     elif model == 'CNN_struct':
-        return Deepbind_CNN_struct_input(config, inf, validation, fold_id)
+        return Deepbind_CNN_struct_input(input_config, inf, validation, fold_id)
     elif model == 'RNN_struct':
-        return Deepbind_CNN_struct_input(config, inf, validation, fold_id)
+        return Deepbind_CNN_struct_input(input_config, inf, validation, fold_id)
 
 
 class Deepbind_CNN_struct_model(object):
@@ -584,9 +579,7 @@ def train_model_parallel(session, config, models, input_data, early_stop = False
             (cost_train[step], cost_test[step], pearson_test[step]) = \
             run_epoch_parallel(session, models, input_data, config, i, train=False,
                                verbose=True, testing = True)
-    # best_epoch = np.argmax(pearson_test, axis = 0).astype(int) *config.test_interval
-    # best_pearson = np.max(pearson_test, axis = 0)
-    # last_pearson = pearson_test[-1,:]
+
     cost_test = np.transpose(cost_test,[1,0])
     pearson_test = np.transpose(pearson_test,[1,0])
     return (cost_test,pearson_test)
@@ -639,22 +632,15 @@ class Config_class(object):
         self.init_scale = init_scale
         self.folds = 3
         if flag == 'large':
-            self.training_frac = 1
-
-            self.test_frac = 1
             self.epochs = 15
             self.early_stop_epochs = 15
             self.test_interval = 1
         elif flag == 'medium':
-            self.training_frac = 0.5
-            self.test_frac = 0.5
             self.epochs = 10
             self.early_stop_epochs = 10
             self.test_interval = 1
 
         else:
-            self.training_frac = 0.1
-            self.test_frac = 0.1
             self.epochs = 4
             self.early_stop_epochs = 4
             self.test_interval = 1
@@ -679,8 +665,6 @@ def save_calibration(protein, model_type,flag, config,new_cost,new_pearson, save
                  num_motifs = config.num_motifs,
                  init_scale = config.init_scale,
                  folds = config.folds,
-                 training_frac = config.training_frac,
-                 test_frac = config.test_frac,
                  epochs = config.epochs,
                  early_stop_epochs = config.early_stop_epochs,
                  cost = new_cost,

@@ -1,6 +1,6 @@
 
 import argparse
-import models as utils
+import deepbind_model.utils as utils
 
 
 # def load_data(target_id_list=None, fold_filter='A'):

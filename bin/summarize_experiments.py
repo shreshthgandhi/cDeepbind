@@ -1,4 +1,4 @@
-import models as utils
+import deepbind_model.utils as utils
 
 def main():
     utils.summarize2('../models')

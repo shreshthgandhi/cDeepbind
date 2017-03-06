@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-import models as utils
+import deepbind_model.utils as utils
 import os.path
 
 
@@ -108,8 +108,8 @@ import os.path
 #     last_pearson = pearson_test[-1]
 #     return (best_pearson, last_pearson, best_epoch)
 
-def calibrate_model(target_protein='RNCMPT00168', num_calibrations=5,
-                    model_type=None, flag=None):
+def calibrate_model(target_protein, num_calibrations,
+                    model_type, flag):
     print("Performing %d calibration trials for %s %s model"%(num_calibrations, target_protein,model_type))
 
     target_file = '../data/rnac/npz_archives/'+str(target_protein)+'.npz'
