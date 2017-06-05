@@ -1,10 +1,7 @@
 
 import argparse
+
 import deepbind_model.utils as utils
-
-
-
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(

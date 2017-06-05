@@ -1,12 +1,11 @@
+import glob
+import os.path
+import time
+
 import numpy as np
+import scipy.stats as stats
 import tensorflow as tf
 from sklearn import cross_validation
-import scipy.stats as stats
-import time
-import os.path
-import glob
-from sklearn import metrics
-
 
 
 class Deepbind_CNN_input(object):
