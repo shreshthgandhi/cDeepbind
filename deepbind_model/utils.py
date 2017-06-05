@@ -643,6 +643,7 @@ def save_calibration(protein, model_type,flag, config,new_cost,new_pearson, save
             save_new = False
 
     if (save_new):
+        print("[*] Updating best calibration for %s %s %s"%(protein,model_type,flag))
         np.savez(file_name, eta_model=config['eta_model'],
                  momentum_model = config['momentum_model'],
                  lam_model = config['lam_model'],
@@ -660,6 +661,7 @@ def save_calibration(protein, model_type,flag, config,new_cost,new_pearson, save
         yaml.dump(config, open(os.path.join(save_dir,protein+'_'+model_type+'_'+flag+'.yml'),'w'))
 
 def save_result(protein,model_type,flag,new_cost,new_pearson,save_dir):
+    import yaml
     file_name = os.path.join(save_dir, protein + '_' + model_type + '_' + flag + '.npz')
     save_new = True
     if not os.path.exists(save_dir):
@@ -670,10 +672,13 @@ def save_result(protein,model_type,flag,new_cost,new_pearson,save_dir):
             save_new = False
 
     if (save_new):
+        print("[*] Updating best result for %s %s %s" % (protein, model_type, flag))
         np.savez(file_name,
                  cost=new_cost,
                  pearson=new_pearson
                  )
+        result_dict = {'cost':new_cost, 'pearson': new_pearson}
+        yaml.dump(result_dict, open(os.path.join(save_dir, protein + '_' + model_type + '_' + flag + '.yml'),'w'))
 
 def load_calibration(protein, model_type, flag, save_dir):
     file_name = os.path.join(save_dir, protein+'_'+model_type+'_'+flag+'.npz')

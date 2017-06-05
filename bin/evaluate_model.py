@@ -31,18 +31,16 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations=5
                                                                   num_calibrations=num_calibrations,
                                                                   model_type='small',
                                                                   flag=model_size_flag)
-        best_config[model_type]['epochs'] = 15 #Change this to be more general
+        best_config[model_type]['epochs'] = 15
 
-    ##### Encapsulate in single function
     target_file = '../data/rnac/npz_archives/' + str(target_protein) + '.npz'
     if not(os.path.isfile(target_file)):
         utils.load_data(target_id_list=[target_protein])
-    inf = np.load(target_file)
-    ####
+    inf = np.load('../test_sequences/data_pickle.npz')
     models = []
     inputs =[]
     input_data = {}
-    num_final_runs = 3 ##Take this from config file
+    num_final_runs = 1
     input_config = utils.input_config(model_size_flag)
 
     with tf.Graph().as_default():
