@@ -18,22 +18,22 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations=5
         traindir[model_type] = model_dir
     best_config = {}
 
+
     for model_type in model_testing_list:
         calib_temp = utils.load_calibration(target_protein, model_type, 'small', '../calibrations')
         if recalibrate:
             best_config[model_type], _, _ = calib.calibrate_model(target_protein,
                                                                   num_calibrations=num_calibrations,
-                                                                  model_type='small',
-                                                                  flag=model_size_flag)
-
+                                                                  model_type=model_type,
+                                                                  flag='small')
         elif calib_temp:
             best_config[model_type] = calib_temp
         else:
             best_config[model_type], _, _ = calib.calibrate_model(target_protein,
                                                                   num_calibrations=num_calibrations,
-                                                                  model_type='small',
-                                                                  flag=model_size_flag)
-        best_config[model_type]['epochs'] = 15  # Change this to be more general
+                                                                  model_type=model_type,
+                                                                  flag='small')
+        best_config[model_type]['epochs'] = 10  # Change this to be more general
 
     ##### Encapsulate in single function
     target_file = '../data/rnac/npz_archives/' + str(target_protein) + '.npz'
@@ -57,7 +57,6 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations=5
                                                        model_type))
                     inputs.append(input_data[model_type])
         with tf.Session() as session:
-            # print("learning_rate=%.6f"% best_config[model_type].eta_model)
             (test_cost, test_pearson) = \
                 utils.train_model_parallel(session, best_config[model_type],
                                            models, inputs,
@@ -81,7 +80,7 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations=5
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpus', default=None, type=int, nargs='+')
-    parser.add_argument('--protein', default=None)
+    parser.add_argument('--protein', default=None, nargs='+')
     parser.add_argument('--model_type', default=None, nargs='+')
     parser.add_argument('--num_calibrations', default=5, type=int)
     parser.add_argument('--model_scale', default=None)
@@ -89,6 +88,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.gpus is not None:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, args.gpus))
-    main(target_protein=args.protein, model_size_flag=args.model_scale,
+    for protein_id in args.protein:
+        main(target_protein=protein_id, model_size_flag=args.model_scale,
          model_testing_list=args.model_type, num_calibrations=args.num_calibrations,
          recalibrate=args.recalibrate)
+    utils.summarize()

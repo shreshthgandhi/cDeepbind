@@ -8,7 +8,7 @@ import deepbind_model.utils as utils
 
 def calibrate_model(target_protein, num_calibrations,
                     model_type, flag):
-    print("Performing %d calibration trials for %s %s model" % (num_calibrations, target_protein, model_type))
+    print("[*] Performing %d calibration trials for %s %s model" % (num_calibrations, target_protein, model_type))
 
     target_file = '../data/rnac/npz_archives/' + str(target_protein) + '.npz'
     if not (os.path.isfile(target_file)):
@@ -29,7 +29,7 @@ def calibrate_model(target_protein, num_calibrations,
     test_pearson = np.zeros([folds, num_calibrations, test_epochs])
 
     for fold in range(folds):
-        print("Evaluating fold %d" % fold)
+        print("[*] Evaluating fold %d" % fold)
         with tf.Graph().as_default():
             models = []
             for i in range(num_calibrations):

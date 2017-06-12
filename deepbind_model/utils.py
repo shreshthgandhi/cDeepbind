@@ -1,6 +1,4 @@
-import glob
 import os.path
-import time
 
 import numpy as np
 import scipy.stats as stats
@@ -299,9 +297,7 @@ class Deepbind_CNN_model(object):
     @property
     def predict_op(self):
         return self._predict_op
-#     @property
-#     def init_op(self):
-#         return self._init_op
+
     @property
     def x(self):
         return self._x
@@ -397,9 +393,6 @@ class Deepbind_RNN_struct_model(object):
     def predict_op(self):
         return self._predict_op
 
-    #     @property
-    #     def init_op(self):
-    #         return self._init_op
     @property
     def x(self):
         return self._x
@@ -419,11 +412,6 @@ def Deepbind_model(config, input, model_type):
 
 def run_epoch(session, model, epoch, eval_op=None, verbose=False, testing=False):
     """Runs the model on the given data."""
-    start_time = time.time()
-    costs = 0.0
-    iters = 0
-    # print("Running epoch")
-
     fetches = {"cost":model.cost
                }
     if eval_op is not None:
@@ -436,8 +424,6 @@ def run_epoch(session, model, epoch, eval_op=None, verbose=False, testing=False)
     for i in range(Nbatch_train):
         mbatchX_train = model.input.training_data[(minib * i): (minib * (i + 1)), :, :]
         mbatchY_train = model.input.training_labels[(minib * i): (minib * (i + 1))]
-        # print(mbatchY_train.shape)
-        # print(mbatchY_train[-1])
         feed_dict = {model.x:mbatchX_train, model.y_true: mbatchY_train}
         vals = session.run(fetches, feed_dict)
         cost_temp = cost_temp + vals["cost"]
@@ -551,7 +537,6 @@ def train_model_parallel(session, config, models, input_data, early_stop = False
     return (cost_test,pearson_test)
 
 def train_model(session, config, model, early_stop=False):
-    # with tf.Graph().as_default():
     print("Training model")
     print_config(config)
     if early_stop:
@@ -562,7 +547,6 @@ def train_model(session, config, model, early_stop=False):
     cost_train = np.zeros([test_epochs])
     cost_test = np.zeros([test_epochs])
     pearson_test = np.zeros([test_epochs])
-    # with tf.Session() as session:
     session.run(tf.global_variables_initializer())
     for i in range(epochs):
         _ = run_epoch(session, model, i, eval_op=model.train_op)
@@ -590,7 +574,6 @@ class Config_class(object):
         self.eta_model = eta
         self.momentum_model = momentum
         self.lam_model = lam
-        # self.epochs = epochs
         self.minib = minib
         self.test_interval = test_interval
         self.motif_len = motif_len
@@ -631,7 +614,6 @@ def create_config_dict(**kwargs):
 
 
 def save_calibration(protein, model_type,flag, config,new_cost,new_pearson, save_dir):
-    import yaml
     file_name = os.path.join(save_dir,protein+'_'+model_type+'_'+flag+'.npz')
     save_new = True
     if not os.path.exists(save_dir):
@@ -657,7 +639,8 @@ def save_calibration(protein, model_type,flag, config,new_cost,new_pearson, save
                  cost = new_cost,
                  pearson = new_pearson
                  )
-        yaml.dump(config, open(os.path.join(save_dir,protein+'_'+model_type+'_'+flag+'.yml'),'w'))
+    else:
+        print("[*] Retaining existing calibration for %s %s %s" % (protein, model_type, flag))
 
 def save_result(protein,model_type,flag,new_cost,new_pearson,save_dir):
     import yaml
@@ -1169,21 +1152,27 @@ def summarize(save_path='../results_final/'):
                     'RNCMPT00097',
                     'RNCMPT00099',
                     'RNCMPT00009']
-    model_list=['CNN_struct','CNN']
+    print("[*] Updating result summary")
+    model_list = ['CNN_struct', 'CNN', 'RNN_struct']
     result_file = open(save_path+'summary.tsv', 'w')
     heading = 'Protein\t' + '\t'.join(model_list) + '\n'
     result_file.write(heading)
+    count = 0
     for protein in protein_list:
-        files = glob.glob(save_path+protein+'*.npz')
-        if files:
-            result_file.write(protein)
-            # values = [np.load(file)['pearson'] for file in files]
-            # result_file.write('\t'+'\t'.join(str(values))+'\n')
-            for model in model_list:
-                if os.path.isfile(save_path+protein+model+'.npz'):
-                    read_file = np.load(save_path+protein+model+'.npz')
-                    result_file.write('\t'+str(read_file['pearson']))
-            result_file.write('\n')
+        # files = glob.glob(save_path+protein+'*large.npz')
+        # if files:
+        result_file.write(protein)
+        # values = [np.load(file)['pearson'] for file in files]
+        # result_file.write('\t'+'\t'.join(str(values))+'\n')
+        for model in model_list:
+            if os.path.isfile(save_path + protein + '_' + model + '_large.npz'):
+                read_file = np.load(save_path + protein + '_' + model + '_large.npz')
+                result_file.write('\t' + str(read_file['pearson']))
+                count += 1
+            else:
+                result_file.write('\t')
+        result_file.write('\n')
+    print("[*] Update complete, %d records updated" % (count))
 
 def summarize2(model_path):
     # proteins = os.listdir(model_path)
