@@ -675,35 +675,6 @@ def load_calibration(protein, model_type, flag, save_dir):
     return config_new
 
 
-def conv1d(input,filter_width, n_output_channels,
-                     n_input_channels, stride,
-                     conv_weights_initializer, conv_biases_initializer,
-                     padding='SAME', op_name=None, no_non_linearity=False):
-    W = tf.get_variable('filters', [filter_width, n_input_channels, n_output_channels],
-                        initializer=conv_weights_initializer)
-
-    biases = tf.get_variable('biases', [n_output_channels], initializer=conv_biases_initializer)
-    if no_non_linearity:
-        output = tf.nn.conv1d(input, W, stride, padding, name=op_name) + biases
-    else:
-        output = tf.nn.relu(
-            tf.nn.conv1d(input, W, stride, padding, name=op_name) + biases)
-    return output
-
-def fc(input,n_hidden_units,input_dim,dropout_prob,weights_initializer, bias_initializer, no_non_linearity=False):
-    W = tf.get_variable('weights',
-                        [input_dim, n_hidden_units],
-                        initializer=weights_initializer)
-    b = tf.get_variable('biases',
-                        [n_hidden_units],
-                        initializer=bias_initializer)
-    if no_non_linearity:
-        output = tf.matmul(input, W) + b
-    else:
-        output = tf.nn.relu(tf.matmul(input, W) + b)
-        output = tf.nn.dropout(output, dropout_prob)
-    return output
-
 
 class input_config(object):
     """Generates configuration for processing input to model"""
@@ -1213,14 +1184,3 @@ def new_listdir(path):
         if os.path.isdir(os.path.join(path,dir)):
             dir_list_new.append(dir)
     return dir_list_new
-
-
-
-
-
-
-
-
-
-
-

@@ -1,0 +1,6 @@
+num_model_trials: 3
+model_testing_list: [RNN_struct]
+model_size_flag: large
+num_calibrations: 5
+recalibrate: False
+summary_only: False
