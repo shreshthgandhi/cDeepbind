@@ -307,7 +307,7 @@ class Deepbind_CNN_model(object):
 
 
 class Deepbind_RNN_struct_model(object):
-    """The deepbind_CNN model with structure"""
+    """The deepbind_RNN model with structure"""
 
     def __init__(self, config, input_):
         self._config = config
@@ -870,13 +870,39 @@ def generate_configs_CNN_struct(num_calibrations, flag='small'):
         configs.append(create_config_dict(**temp_config))
     return configs
 
+
+def generate_configs_RNN_struct(num_calibrations, flag='small'):
+    configs = []
+    for i in range(num_calibrations):
+        eta = np.float32(10 ** (np.random.uniform(-2, -4)))
+        lam = np.float32(10 ** (np.random.uniform(-3, -6)))
+        init_scale = np.float32(10 ** (np.random.uniform(-7, -3)))
+        minib = 100
+        test_interval = 10
+        num_conv_layers = np.random.choice([2, 3, 4, 5])
+        filter_lengths = [16 // (i + 1) for i in range(num_conv_layers)]
+        num_filters = [8 * (i + 1) for i in range(num_conv_layers)]
+        strides = np.random.choice([1], size=num_conv_layers)
+        pool_windows = np.random.choice([1], size=num_conv_layers)
+        batchnorm = np.random.choice([True, False])
+        lstm_size = np.random.choice([20, 50, 100])
+        temp_config = {'eta_model': eta, 'momentum_model': momentum, 'lam_model': lam, 'minib': minib,
+                       'test_interval': test_interval, 'filter_lengths': filter_lengths, 'num_filters': num_filters,
+                       'num_conv_layers': num_conv_layers, 'lstm_size': lstm_size, 'strides': strides,
+                       'pool_windows': pool_windows,
+                       'batchnorm': batchnorm,
+                       'init_scale': init_scale, 'flag': flag}
+
+        configs.append(create_config_dict(**temp_config))
+    return configs
+
 def generate_configs(num_calibrations, model_type, flag='small'):
     if model_type=='CNN':
         return generate_configs_CNN(num_calibrations, flag)
     if model_type=='CNN_struct':
         return generate_configs_CNN_struct(num_calibrations, flag)
     if model_type=='RNN_struct':
-        return generate_configs_CNN_struct(num_calibrations, flag)
+        return generate_configs_RNN_struct(num_calibrations, flag)
 
 def summarize(save_path='../results_final/'):
     protein_list = ['RNCMPT00100',
