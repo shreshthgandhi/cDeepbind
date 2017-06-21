@@ -38,8 +38,8 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations=5
 
     ##### Encapsulate in single function
     target_file = '../data/rnac/npz_archives/' + str(target_protein) + '.npz'
-    # if not (os.path.isfile(target_file)):
-    utils.load_data(target_id_list=[target_protein])
+    if not (os.path.isfile(target_file)):
+        utils.load_data(target_id_list=[target_protein])
     inf = np.load(target_file)
     ####
     models = []
@@ -83,11 +83,6 @@ if __name__ == "__main__":
     parser.add_argument('--gpus', default=None, type=int, nargs='+')
     parser.add_argument('--protein', default=None, nargs='+')
     parser.add_argument('--configuration', default=None)
-    # parser.add_argument('--model_type', default=None, nargs='+')
-    # parser.add_argument('--num_calibrations', default=5, type=int)
-    # parser.add_argument('--model_scale', default=None)
-    # parser.add_argument('--recalibrate', default=False)
-    # parser.add_argument('--summary_only', default=False)
     args = parser.parse_args()
     config = yaml.load(open(args.configuration, 'r'))
     if args.gpus is not None:
