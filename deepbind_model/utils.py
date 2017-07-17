@@ -511,6 +511,17 @@ def train_model_parallel(session, config, models, input_data, early_stop = False
     pearson_test = np.transpose(pearson_test,[1,0])
     return (cost_test,pearson_test)
 
+
+def evaluate_model_parallel(session, config, models, input_data):
+    """Evaluates a list of models in parallel. Expects a list of inputs of equal length as models"""
+    num_models = len(models)
+    cost_train = np.zeros([num_models])
+    cost_test = np.zeros([num_models])
+    pearson_test = np.zeros([num_models])
+    (cost_train, cost_test, pearson_test) = \
+        run_epoch_parallel(session, models, input_data, config, 0, train=False, verbose=True, testing=True)
+    return (cost_test, pearson_test)
+
 def train_model(session, config, model, early_stop=False):
     print("Training model")
     print_config(config)

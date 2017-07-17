@@ -2,7 +2,6 @@ import argparse
 import os.path
 
 import numpy as np
-import scipy.stats as stats
 import tensorflow as tf
 
 import deepbind_model.utils as utils
@@ -20,13 +19,11 @@ def main(model_dir, target_protein, model_size_flag, model_type):
             model = utils.Deepbind_model(config, input_data, model_type)
         best_model_vars = tf.contrib.framework.get_variables(scope='model1')
         saver = tf.train.Saver(best_model_vars)
-        data = np.concatenate([inf['data_one_hot_training'], np.transpose(inf['structures_train'], [0, 2, 1])], axis=-1)
         with tf.Session() as sess:
             saver.restore(sess,
                           os.path.join(model_dir, target_protein + '_best_model.ckpt'))
-            scores = sess.run(model._predict_op, feed_dict={model._x: data})
-        scores_test = inf['labels_training']
-        print('Pearson correlation on test-set is', stats.pearsonr(scores, scores_test))
+            scores = utils.evaluate_model_parallel(sess, config, [model], input_data)
+        print(scores)
 
 
 if __name__ == "__main__":
