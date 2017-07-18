@@ -332,10 +332,15 @@ class Deepbind_RNN_struct_model(object):
         lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
                                                initializer=self.weight_initializer,
                                                )
-        ((output_fw, output_bw), state) = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell,
-                                                                          self.conv_output, dtype=tf.float32,
-                                                                          scope='bidirectional_lstm')
-        self.lstm_output = tf.concat([output_fw[:, -1, :], output_bw[:, -1, :]], 1, name='concatenated_lstm_output')
+        if config.get('bidirectional_LSTM', False):
+            ((output_fw, output_bw), state) = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell,
+                                                                              self.conv_output, dtype=tf.float32,
+                                                                              scope='bidirectional_lstm')
+            self.lstm_output = tf.concat([output_fw[:, -1, :], output_bw[:, -1, :]], 1, name='concatenated_lstm_output')
+        else:
+            output, state = tf.nn.dynamic_rnn(lstm_fw_cell, self.conv_output, dtype=tf.float32,
+                                              scope='unidirectional_lstm')
+            self.lstm_output = output[:, -1, :]
         self.target_predictions = tf.layers.dense(self.lstm_output, units=1,
                                                   kernel_regularizer=
                                                   tf.contrib.layers.l2_regularizer(scale=config['lam_model']),
