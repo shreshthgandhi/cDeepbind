@@ -3,7 +3,6 @@ import os.path
 import numpy as np
 import scipy.stats as stats
 import tensorflow as tf
-import yaml
 from sklearn import cross_validation
 
 
@@ -319,25 +318,37 @@ class Deepbind_RNN_struct_model(object):
         self.target_scores_exp = tf.expand_dims(self.target_scores, 1)
         conv_input = self.rna_sequence
         for layer in range(config['num_conv_layers']):
-            self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
-                                                kernel_size=config['filter_lengths'][layer],
-                                                strides=config['strides'][layer],
-                                                padding='SAME', activation=tf.nn.relu,
-                                                kernel_initializer=self.weight_initializer,
-                                                name='conv_layer_' + str(layer))
+            if layer == (config['num_conv_layers'] - 1):
+                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
+                                                    kernel_size=config['filter_lengths'][layer],
+                                                    strides=config['strides'][layer],
+                                                    padding='SAME', activation=None,
+                                                    kernel_initializer=self.weight_initializer,
+                                                    name='conv_layer_' + str(layer))
+            else:
+                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
+                                                    kernel_size=config['filter_lengths'][layer],
+                                                    strides=config['strides'][layer],
+                                                    padding='SAME', activation=tf.nn.relu,
+                                                    kernel_initializer=self.weight_initializer,
+                                                    name='conv_layer_' + str(layer))
+
             conv_input = self.conv_output
-        lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
-                                               initializer=self.weight_initializer,
-                                               )
-        lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
-                                               initializer=self.weight_initializer,
-                                               )
         if config.get('bidirectional_LSTM', False):
+            lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
+                                                   initializer=self.weight_initializer,
+                                                   )
+            lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
+                                                   initializer=self.weight_initializer,
+                                                   )
             ((output_fw, output_bw), state) = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell,
                                                                               self.conv_output, dtype=tf.float32,
                                                                               scope='bidirectional_lstm')
             self.lstm_output = tf.concat([output_fw[:, -1, :], output_bw[:, -1, :]], 1, name='concatenated_lstm_output')
         else:
+            lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
+                                                   initializer=self.weight_initializer,
+                                                   )
             output, state = tf.nn.dynamic_rnn(lstm_fw_cell, self.conv_output, dtype=tf.float32,
                                               scope='unidirectional_lstm')
             self.lstm_output = output[:, -1, :]
@@ -382,6 +393,190 @@ class Deepbind_RNN_struct_model(object):
         return self.target_scores
 
 
+class Deepbind_RNN_model(object):
+    """The deepbind_RNN model with structure"""
+
+    def __init__(self, config, input_):
+        self._config = config
+        self._input = input_
+        self.weight_initializer = tf.truncated_normal_initializer(stddev=config['init_scale'])
+        self.rna_sequence = tf.placeholder(tf.float32, shape=[None, None, 4], name='input_sequence')
+        self.target_scores = tf.placeholder(tf.float32, shape=[None], name='target_scores')
+        self.target_scores_exp = tf.expand_dims(self.target_scores, 1)
+        conv_input = self.rna_sequence
+        for layer in range(config['num_conv_layers']):
+            if layer == (config['num_conv_layers'] - 1):
+                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
+                                                    kernel_size=config['filter_lengths'][layer],
+                                                    strides=config['strides'][layer],
+                                                    padding='SAME', activation=None,
+                                                    kernel_initializer=self.weight_initializer,
+                                                    name='conv_layer_' + str(layer))
+            else:
+                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
+                                                    kernel_size=config['filter_lengths'][layer],
+                                                    strides=config['strides'][layer],
+                                                    padding='SAME', activation=tf.nn.relu,
+                                                    kernel_initializer=self.weight_initializer,
+                                                    name='conv_layer_' + str(layer))
+
+            conv_input = self.conv_output
+        if config.get('bidirectional_LSTM', False):
+            lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
+                                                   initializer=self.weight_initializer,
+                                                   )
+            lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
+                                                   initializer=self.weight_initializer,
+                                                   )
+            ((output_fw, output_bw), state) = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell,
+                                                                              self.conv_output, dtype=tf.float32,
+                                                                              scope='bidirectional_lstm')
+            self.lstm_output = tf.concat([output_fw[:, -1, :], output_bw[:, -1, :]], 1,
+                                         name='concatenated_lstm_output')
+        else:
+            lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
+                                                   initializer=self.weight_initializer,
+                                                   )
+            output, state = tf.nn.dynamic_rnn(lstm_fw_cell, self.conv_output, dtype=tf.float32,
+                                              scope='unidirectional_lstm')
+            self.lstm_output = output[:, -1, :]
+        self.target_predictions = tf.layers.dense(self.lstm_output, units=1,
+                                                  kernel_regularizer=
+                                                  tf.contrib.layers.l2_regularizer(scale=config['lam_model']),
+                                                  name='target_prediction')
+        self.loss = tf.losses.mean_squared_error(self.target_scores_exp, self.target_predictions,
+                                                 scope='mean_squared_error')
+        self._train_op = tf.contrib.layers.optimize_loss(self.loss, tf.contrib.framework.get_global_step(),
+                                                         learning_rate=tf.constant(config['eta_model'], tf.float32),
+                                                         optimizer='Adam',
+                                                         clip_gradients=config.get('gradient_clip_value', 20.0),
+                                                         name='train_op')
+
+    @property
+    def input(self):
+        return self._input
+
+    @property
+    def config(self):
+        return self._config
+
+    @property
+    def cost(self):
+        return self.loss
+
+    @property
+    def train_op(self):
+        return self._train_op
+
+    @property
+    def predict_op(self):
+        return tf.squeeze(self.target_predictions)
+
+    @property
+    def x(self):
+        return self.rna_sequence
+
+    @property
+    def y_true(self):
+        return self.target_scores
+
+
+#
+# class Deepbind_RNN_struct_model(object):
+#     """The deepbind_CNN model with structure"""
+#
+#     def __init__(self, config, input_):
+#         self._config = config
+#         eta_model = config['eta_model']
+#         momentum_model = config['momentum_model']
+#         lam_model = config['lam_model']
+#         seq_length = input_.seq_length
+#
+#         self.motif_len = config['motif_len']  # Tunable Motif length
+#         self.num_motifs = config['num_motifs']  # Number of tunable motifs
+#         self.motif_len2 = config['motif_len']
+#         self.num_motifs2 = config['num_motifs']
+#         self._init_op = tf.global_variables_initializer()
+#
+#         self._x = x = tf.placeholder(tf.float32, shape=[None, seq_length, 9], name='One_hot_data')
+#         self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
+#
+#         x_image = tf.reshape(x, [-1, seq_length, 1, 9])
+#
+#         W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 9, self.num_motifs], stddev=0.01), name='W_Conv1')
+#         b_conv1 = tf.Variable(tf.constant(0.001, shape=[self.num_motifs]), name='b_conv1')
+#
+#         h_conv1 = tf.nn.conv2d(x_image, W_conv1,
+#                                strides=[1, 1, 1, 1], padding='SAME')
+#         h_relu_conv1 = tf.nn.relu(h_conv1 + b_conv1, name='First_layer_output')
+#         W_conv2 = tf.Variable(tf.random_normal([self.motif_len2, 1, self.num_motifs2, 1]), name='W_conv2')
+#         b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name='b_conv2')
+#         h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
+#                                strides=[1, 1, 1, 1], padding='SAME')
+#         n_hidden =10
+#         W_hidden = tf.Variable(tf.random_normal([1,n_hidden]),name='W_hidden')
+#         b_hidden = tf.Variable(tf.constant(0.001, shape=[n_hidden]), name='b_hidden')
+#         W_out = tf.Variable(tf.random_normal([n_hidden,1]), name='W_hidden')
+#         b_out = tf.Variable(tf.constant(0.001, shape=[1]), name='b_hidden')
+#
+#         h_input = tf.reshape(tf.squeeze(h_conv2, axis=[3]),[-1,1])
+#         h_input = tf.matmul(h_input, W_hidden)
+#         h_input = tf.reshape(h_input,[-1,seq_length,n_hidden])
+#         # h_input = tf.unstack(value=h_input,axis=1)
+#         lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
+#         outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32)
+#         h_final = tf.squeeze(tf.matmul(tf.squeeze(tf.slice(outputs,[0,tf.shape(outputs)[1]-1,0],[-1,1,-1])),W_out)+b_out)
+#
+#         cost_batch = tf.square(h_final - y_true)
+#         self._cost = cost = tf.reduce_mean(cost_batch)
+#         # tf.scalar_summary("Training Loss", cost)
+#         norm_w = (tf.reduce_sum(tf.abs(W_conv1)) + tf.reduce_sum(tf.abs(W_conv2)))
+#         # optimizer = tf.train.MomentumOptimizer(learning_rate=eta_model,
+#         #                                        momentum=momentum_model)
+#         optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
+#
+#         self._train_op = optimizer.minimize(cost + norm_w * lam_model)
+#         self._predict_op = h_final
+#
+#         # summaries = []
+#         #
+#         # summaries.append(tf.summary.scalar('cost', self.cost))
+#         # summaries.append(tf.summary.histogram('first_layer', h_relu_conv1))
+#         # summaries.append(tf.summary.histogram('final_layer', h_final))
+#         #
+#         # self.summary_op = tf.summary.merge(summaries)
+#
+#     def initialize(self, session):
+#         session.run(self._init_op)
+#
+#     @property
+#     def input(self):
+#         return self._input
+#
+#     @property
+#     def config(self):
+#         return self._config
+#
+#     @property
+#     def cost(self):
+#         return self._cost
+#
+#     @property
+#     def train_op(self):
+#         return self._train_op
+#
+#     @property
+#     def predict_op(self):
+#         return self._predict_op
+#
+#     @property
+#     def x(self):
+#         return self._x
+#
+#     @property
+#     def y_true(self):
+#         return self._y_true
+
 def Deepbind_model(config, input, model_type):
     if model_type == 'CNN':
         return Deepbind_CNN_model(config, input)
@@ -389,6 +584,8 @@ def Deepbind_model(config, input, model_type):
         return Deepbind_CNN_struct_model(config, input)
     elif model_type == 'RNN_struct':
         return Deepbind_RNN_struct_model(config, input)
+    elif model_type == 'RNN':
+        return Deepbind_RNN_model(config, input)
 
 def run_epoch(session, model, epoch, eval_op=None, verbose=False, testing=False):
     """Runs the model on the given data."""
@@ -616,21 +813,10 @@ def save_calibration(protein, model_type,flag, config,new_cost,new_pearson, save
 
     if (save_new):
         print("[*] Updating best calibration for %s %s %s"%(protein,model_type,flag))
-        np.savez(file_name, eta_model=config['eta_model'],
-                 momentum_model = config['momentum_model'],
-                 lam_model = config['lam_model'],
-                 minib = config['minib'],
-                 test_interval = config['test_interval'],
-                 motif_len = config['motif_len'],
-                 num_motifs = config['num_motifs'],
-                 init_scale = config['init_scale'],
-                 folds = config['folds'],
-                 epochs = config['epochs'],
-                 early_stop_epochs = config['early_stop_epochs'],
-                 cost = new_cost,
-                 pearson = new_pearson
-                 )
-        yaml.dump(config, open(os.path.join(save_dir, protein + '_' + model_type + '_' + flag + '.yml'), 'w'))
+        kwargs = {'pearson': new_pearson, 'cost': new_cost}
+        for key in config.keys():
+            kwargs[key] = config[key]
+        np.savez(file_name, **kwargs)
     else:
         print("[*] Retaining existing calibration for %s %s %s" % (protein, model_type, flag))
 
@@ -866,11 +1052,13 @@ def generate_configs_CNN_struct(num_calibrations, flag='small'):
 def generate_configs_RNN_struct(num_calibrations, flag='small'):
     configs = []
     for i in range(num_calibrations):
-        eta = np.float32(10 ** (np.random.uniform(-2, -4)))
+        eta = np.float32(10 ** (np.random.uniform(-2, -6)))
         lam = np.float32(10 ** (np.random.uniform(-3, -6)))
         init_scale = np.float32(10 ** (np.random.uniform(-7, -3)))
         minib = 100
         test_interval = 10
+        bidirectional_LSTM = np.random.choice([True, False])
+        bidirectional_LSTM = False
         num_conv_layers = np.random.choice([2, 3, 4, 5])
         num_conv_layers = 2
         filter_lengths = [16 // (i + 1) for i in range(num_conv_layers)]
@@ -886,6 +1074,7 @@ def generate_configs_RNN_struct(num_calibrations, flag='small'):
                        'test_interval': test_interval, 'filter_lengths': filter_lengths, 'num_filters': num_filters,
                        'num_conv_layers': num_conv_layers, 'lstm_size': lstm_size, 'strides': strides,
                        'pool_windows': pool_windows,
+                       'bidirectional_LSTM': bidirectional_LSTM,
                        'batchnorm': batchnorm,
                        'init_scale': init_scale, 'flag': flag}
 
@@ -898,6 +1087,8 @@ def generate_configs(num_calibrations, model_type, flag='small'):
     if model_type=='CNN_struct':
         return generate_configs_CNN_struct(num_calibrations, flag)
     if model_type=='RNN_struct':
+        return generate_configs_RNN_struct(num_calibrations, flag)
+    if model_type == 'RNN':
         return generate_configs_RNN_struct(num_calibrations, flag)
 
 def summarize(save_path='../results_final/'):
