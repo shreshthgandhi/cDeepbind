@@ -19,7 +19,7 @@ class Deepbind_CNN_input(object):
                         inf["training_cases"], inf["test_cases"],
                         inf["seq_length"])
         labels_training = (labels_training - np.mean(labels_training)) / np.var(labels_training)
-        labels_test = (labels_test - np.mean(labels_test)) / np.mean(labels_test)
+        labels_test = (labels_test - np.mean(labels_test)) / np.var(labels_test)
         self.training_cases = int(training_cases * config.training_frac)
         self.test_cases = int(test_cases * config.test_frac)
         train_index = range(self.training_cases)
@@ -64,7 +64,7 @@ class Deepbind_CNN_struct_input(object):
                         inf["training_cases"], inf["test_cases"],
                         inf["seq_length"])
         labels_training = (labels_training - np.mean(labels_training)) / np.var(labels_training)
-        labels_test = (labels_test - np.mean(labels_test)) / np.mean(labels_test)
+        labels_test = (labels_test - np.mean(labels_test)) / np.var(labels_test)
         self.training_cases = int(training_cases * config.training_frac)
         self.test_cases = int(test_cases * config.test_frac)
         train_index = range(self.training_cases)
@@ -795,9 +795,9 @@ def generate_configs_CNN(num_calibrations, flag='small'):
         init_scale = np.float32(10 ** (np.random.uniform(-7, -3)))
         minib = 100
         test_interval = 10
-        num_conv_layers = np.random.choice([2, 3, 4])
+        num_conv_layers = np.random.choice([2, 3])
         filter_lengths = [16 // (2 ** i) for i in range(num_conv_layers)]
-        num_filters = [8 * (i + 1) for i in range(num_conv_layers)]
+        num_filters = [16 * (i + 1) for i in range(num_conv_layers)]
         strides = np.random.choice([1], size=num_conv_layers)
         pool_windows = np.random.choice([1], size=num_conv_layers)
         final_pool = np.random.choice(['max', 'avg', 'max_avg'])

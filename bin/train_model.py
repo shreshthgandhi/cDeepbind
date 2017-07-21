@@ -10,7 +10,7 @@ import deepbind_model.calibrate_model as calib
 import deepbind_model.utils as utils
 
 
-def main(target_protein, model_size_flag, model_testing_list, num_calibrations=5, recalibrate=False):
+def main(target_protein, model_size_flag, model_testing_list, num_calibrations, recalibrate, num_final_runs):
     traindir = {}
     for model_type in model_testing_list:
         model_dir = os.path.join('../models/', target_protein, model_type, model_size_flag,
@@ -45,7 +45,6 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations=5
     models = []
     inputs = []
     input_data = {}
-    num_final_runs = 3  ##Take this from config file
     input_config = utils.input_config(model_size_flag)
 
     with tf.Graph().as_default():
@@ -95,5 +94,6 @@ if __name__ == "__main__":
             main(target_protein=protein_id, model_size_flag=config.get('model_scale', 'large'),
                  model_testing_list=config.get('model_testing_list', ['RNN_struct']),
                  num_calibrations=config.get('num_calibrations', 5),
-                 recalibrate=config.get('recalibrate', False))
+                 recalibrate=config.get('recalibrate', False),
+                 num_final_runs=config.get('num_final_runs', 3))
     utils.summarize()
