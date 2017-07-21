@@ -3,7 +3,7 @@ import os.path
 import numpy as np
 import scipy.stats as stats
 import tensorflow as tf
-from sklearn import cross_validation
+from sklearn.model_selection import KFold
 
 
 class Deepbind_CNN_input(object):
@@ -25,15 +25,15 @@ class Deepbind_CNN_input(object):
         train_index = range(self.training_cases)
         validation_index = range(self.test_cases)
         if validation:
-            kf = cross_validation.KFold(self.training_cases, n_folds=folds)
+            kf = KFold(n_splits=folds)
+            indices = kf.split(range(self.training_cases))
             check = 1
-            for train_idx, val_idx in kf:
+            for train_idx, val_idx in indices:
                 if(check == fold_id):
                     train_index = train_idx
                     validation_index = val_idx
                     break
                 check = check + 1
-        if validation:
             self.training_data = data_one_hot_training[train_index]
             self.test_data = data_one_hot_training[validation_index]
             self.training_labels = labels_training[train_index]
@@ -70,15 +70,15 @@ class Deepbind_CNN_struct_input(object):
         train_index = range(self.training_cases)
         validation_index = range(self.test_cases)
         if validation:
-            kf = cross_validation.KFold(self.training_cases, n_folds=folds)
+            kf = KFold(n_splits=folds)
+            indices = kf.split(range(self.training_cases))
             check = 1
-            for train_idx, val_idx in kf:
+            for train_idx, val_idx in indices:
                 if(check == fold_id):
                     train_index = train_idx
                     validation_index = val_idx
                     break
                 check += 1
-        if validation:
             self.training_data = data_one_hot_training[train_index]
             self.test_data = data_one_hot_training[validation_index]
             self.training_labels = labels_training[train_index]
