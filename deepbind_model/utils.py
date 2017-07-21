@@ -8,10 +8,9 @@ from sklearn import cross_validation
 
 class Deepbind_CNN_input(object):
     """The deepbind_CNN model input without structure"""
-    def __init__(self, config, inf, validation=False, fold_id=1):
-        self.folds = folds = config.folds
 
-        # with np.load("deepbind_RNAC.npz") as inf:
+    def __init__(self, config, inf, validation=False, fold_id=1, normalization=True):
+        self.folds = folds = config.folds
         (data_one_hot_training, labels_training,
          data_one_hot_test, labels_test,
          training_cases, test_cases,
@@ -19,11 +18,12 @@ class Deepbind_CNN_input(object):
                         inf["data_one_hot_test"], inf["labels_test"],
                         inf["training_cases"], inf["test_cases"],
                         inf["seq_length"])
+        labels_training = (labels_training - np.mean(labels_training)) / np.var(labels_training)
+        labels_test = (labels_test - np.mean(labels_test)) / np.mean(labels_test)
         self.training_cases = int(training_cases * config.training_frac)
         self.test_cases = int(test_cases * config.test_frac)
         train_index = range(self.training_cases)
         validation_index = range(self.test_cases)
-
         if validation:
             kf = cross_validation.KFold(self.training_cases, n_folds=folds)
             check = 1
@@ -51,7 +51,8 @@ class Deepbind_CNN_input(object):
 
 class Deepbind_CNN_struct_input(object):
     """The deepbind_CNN model input with structure"""
-    def __init__(self, config, inf, validation=False, fold_id=1):
+
+    def __init__(self, config, inf, validation=False, fold_id=1, normalization=True):
         self.folds = folds = config.folds
         (data_one_hot_training, labels_training,
          data_one_hot_test, labels_test,
@@ -62,9 +63,10 @@ class Deepbind_CNN_struct_input(object):
                         inf["structures_train"], inf["structures_test"],
                         inf["training_cases"], inf["test_cases"],
                         inf["seq_length"])
+        labels_training = (labels_training - np.mean(labels_training)) / np.var(labels_training)
+        labels_test = (labels_test - np.mean(labels_test)) / np.mean(labels_test)
         self.training_cases = int(training_cases * config.training_frac)
         self.test_cases = int(test_cases * config.test_frac)
-
         train_index = range(self.training_cases)
         validation_index = range(self.test_cases)
         if validation:
