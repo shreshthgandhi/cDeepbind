@@ -105,177 +105,55 @@ def Deepbind_input(input_config,inf,model,validation=False,fold_id=1):
         return Deepbind_CNN_struct_input(input_config, inf, validation, fold_id)
 
 
-class Deepbind_CNN_struct_model(object):
-    """The deepbind_CNN model with structure"""
-    def __init__(self, config, input_):
-
-        self._config = config
-        eta_model = config['eta_model']
-        momentum_model = config['momentum_model']
-        lam_model = config['lam_model']
-
-        seq_length = input_.seq_length
-        
-        self.motif_len = config['motif_len']  # Tunable Motif length
-        self.num_motifs = config['num_motifs']  # Number of tunable motifs
-        self.motif_len2 = config['motif_len']
-        self.num_motifs2 = config['num_motifs']
-        m2 = 4  # Filter size for 2 conv net
-        self._init_op = tf.global_variables_initializer()
-
-        self._x = x = tf.placeholder(tf.float32, shape=[None, seq_length, 9], name='One_hot_data')
-        self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
-
-        x_image = tf.reshape(x, [-1, seq_length, 1, 9])
-
-        W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 9, self.num_motifs], stddev=0.01), name='W_Conv1')
-        b_conv1 = tf.Variable(tf.constant(0.001, shape=[self.num_motifs]), name='b_conv1')
-
-        h_conv1 = tf.nn.conv2d(x_image, W_conv1,
-                       strides=[1, 1, 1, 1], padding='SAME')
-        h_relu_conv1 = tf.nn.relu(h_conv1 + b_conv1, name='First_layer_output')
-        W_conv2 = tf.Variable(tf.random_normal([self.motif_len2, 1, self.num_motifs2, 1]), name='W_conv2')
-        b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name= 'b_conv2')
-        h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
-                               strides=[1, 1, 1, 1], padding='SAME')
-
-        h_relu_conv2 = tf.nn.relu(h_conv2 + b_conv2)
-        # h_max=tf.reduce_max(h_relu_conv2,reduction_indices=[1,2,3]) 
-        #Taking max of rectified output was giving poor performance
-        h_max = tf.reduce_max(h_conv2+b_conv2, axis=[1, 2, 3], name='h_max')
-        h_avg = tf.reduce_mean(h_conv2+b_conv2, axis=[1, 2, 3], name='h_avg')
-        W_final = tf.Variable(tf.random_normal([2,1], stddev=0.1))
-        b_final = tf.Variable(tf.constant(0.001, shape=[]))
-        h_final = tf.squeeze(tf.matmul(tf.stack([h_max,h_avg],axis=1),W_final) + b_final)
-        # Output has shape None and is a vector of length minib
-
-        # cost_batch = tf.square(h_max - y_true)
-        cost_batch = tf.square(h_final - y_true)
-        self._cost = cost = tf.reduce_mean(cost_batch)
-        # tf.scalar_summary("Training Loss", cost)
-        norm_w = (tf.reduce_sum(tf.abs(W_conv1)) +tf.reduce_sum(tf.abs(W_conv2)))                  
-        # optimizer = tf.train.MomentumOptimizer(learning_rate=eta_model,
-        #                                        momentum=momentum_model)
-        optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
-
-        self._train_op = optimizer.minimize(cost + norm_w * lam_model)
-        self._predict_op = h_final
-
-        # summaries = []
-        #
-        # summaries.append(tf.summary.scalar('cost', self.cost))
-        # summaries.append(tf.summary.histogram('first_layer', h_relu_conv1))
-        # summaries.append(tf.summary.histogram('max_output', h_max))
-        # summaries.append(tf.summary.histogram('avg_output', h_avg))
-        # summaries.append(tf.summary.histogram('final_layer', h_final))
-
-        # self.summary_op = tf.summary.merge(summaries)
-    def initialize(self, session):
-        session.run(self._init_op)
-
-    @property
-    def input(self):
-        return self._input
-
-    @property
-    def config(self):
-        return self._config
-
-    
-    @property
-    def cost(self):
-        return self._cost
-
-     
-    @property
-    def train_op(self):
-        return self._train_op
-
-    @property
-    def predict_op(self):
-        return self._predict_op
-#     @property
-#     def init_op(self):
-#         return self._init_op
-    @property
-    def x(self):
-        return self._x
-    @property
-    def y_true(self):
-        return self._y_true
-
 class Deepbind_CNN_model(object):
     """The deepbind_CNN model without structure"""
+
     def __init__(self, config, input_):
-        self._input = input_
-
         self._config = config
-        eta_model = config['eta_model']
-        lam_model = config['lam_model']
-        seq_length = input_.seq_length
+        self._input = input_
+        self.weight_initializer = tf.truncated_normal_initializer(stddev=config['init_scale'])
+        self.rna_sequence = tf.placeholder(tf.float32, shape=[None, None, 4], name='input_sequence')
+        self.target_scores = tf.placeholder(tf.float32, shape=[None], name='target_scores')
+        self.target_scores_exp = tf.expand_dims(self.target_scores, 1)
+        conv_input = self.rna_sequence
+        for layer in range(config['num_conv_layers']):
+            if layer == (config['num_conv_layers'] - 1):
+                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=1,
+                                                    kernel_size=config['filter_lengths'][layer],
+                                                    strides=config['strides'][layer],
+                                                    padding='SAME', activation=None,
+                                                    kernel_initializer=self.weight_initializer,
+                                                    name='conv_layer_' + str(layer))
+            else:
+                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
+                                                    kernel_size=config['filter_lengths'][layer],
+                                                    strides=config['strides'][layer],
+                                                    padding='SAME', activation=tf.nn.relu,
+                                                    kernel_initializer=self.weight_initializer,
+                                                    name='conv_layer_' + str(layer))
 
-        m = 16  # Tunable Motif length
-        d = 10  # Number of tunable motifs
-        m2 = 4  # Filter size for 2 conv net
-        
-        self._init_op = tf.global_variables_initializer()
+            conv_input = self.conv_output
+        self.conv_output = tf.squeeze(self.conv_output, axis=2)
+        final_pool = config.get('final_pool', 'max')
+        if final_pool == 'max':
+            self.target_predictions = tf.reduce_max(self.conv_output, axis=[1], name='max_pool', keep_dims=True)
+        if final_pool == 'avg':
+            self.target_predictions = tf.reduce_mean(self.conv_output, axis=[1], name='avg_pool', keep_dims=True)
+        if final_pool == 'max_avg':
+            max_pool = tf.reduce_max(self.conv_output, axis=[1], name='max_pool', keep_dims=True)
+            avg_pool = tf.reduce_mean(self.conv_output, axis=[1], name='avg_pool', keep_dims=True)
+            self.target_predictions = tf.layers.dense(tf.concat([max_pool, avg_pool], axis=1), units=1,
+                                                      kernel_regularizer=tf.contrib.layers.l2_regularizer(
+                                                          scale=config['lam_model']),
+                                                      name='target_prediction')
+        self.loss = tf.losses.mean_squared_error(self.target_scores_exp, self.target_predictions,
+                                                 scope='mean_squared_error')
+        self._train_op = tf.contrib.layers.optimize_loss(self.loss, tf.contrib.framework.get_global_step(),
+                                                         learning_rate=tf.constant(config['eta_model'], tf.float32),
+                                                         optimizer='Adam',
+                                                         clip_gradients=config.get('gradient_clip_value', 20.0),
+                                                         name='train_op')
 
-        self._x = x = tf.placeholder(tf.float32, shape=[None, seq_length, 4], name='One_hot_data')
-        self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
-
-        x_image = tf.reshape(x, [-1, seq_length, 1, 4])
-
-        W_conv1 = tf.Variable(tf.random_normal([m, 1, 4, d], stddev=0.01), name='W_Conv1')
-        b_conv1 = tf.Variable(tf.constant(0.001, shape=[d]), name='b_conv1')
-
-        h_conv1 = tf.nn.conv2d(x_image, W_conv1,
-                       strides=[1, 1, 1, 1], padding='SAME')
-        h_relu_conv1 = tf.nn.relu(h_conv1 + b_conv1, name='First_layer_output')
-        W_conv2 = tf.Variable(tf.random_normal([m2, 1, d, 1]), name='W_conv2')
-        b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name= 'b_conv2')
-        h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
-                               strides=[1, 1, 1, 1], padding='SAME')
-
-        h_relu_conv2 = tf.nn.relu(h_conv2 + b_conv2)
-        # h_max=tf.reduce_max(h_relu_conv2,reduction_indices=[1,2,3]) 
-        #Taking max of rectified output was giving poor performance
-        h_max = tf.reduce_max(h_conv2+b_conv2, axis=[1, 2, 3], name='h_max')
-        h_avg = tf.reduce_mean(h_conv2+b_conv2, axis=[1, 2, 3], name='h_avg')
-        W_final = tf.Variable(tf.random_normal([2,1], stddev=0.1))
-        b_final = tf.Variable(tf.constant(0.001, shape=[]))
-
-        h_final = tf.squeeze(tf.matmul(tf.stack([h_max, h_avg], axis=1), W_final) + b_final)
-
-
-        # Output has shape None and is a vector of length minib
-
-        # cost_batch = tf.square(h_max - y_true)
-        cost_batch = tf.square(h_final - y_true)
-        self._cost = cost = tf.reduce_mean(cost_batch)
-        # tf.scalar_summary("Training Loss", cost)
-        norm_w = (tf.reduce_sum(tf.abs(W_conv1)) +tf.reduce_sum(tf.abs(W_conv2)))
-                  
-        # optimizer = tf.train.MomentumOptimizer(learning_rate=eta_model,
-        #                                        momentum=momentum_model)
-        optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
-
-        
-        self._train_op = optimizer.minimize(cost + norm_w * lam_model)
-        self._predict_op = h_final
-
-        # summaries = []
-        #
-        # summaries.append(tf.summary.scalar('cost',self.cost))
-        # summaries.append(tf.summary.histogram('first_layer',h_relu_conv1))
-        # summaries.append(tf.summary.histogram('max_output',h_max))
-        # summaries.append(tf.summary.histogram('avg_output',h_avg))
-        # summaries.append(tf.summary.histogram('final_layer',h_final))
-        #
-        # self.summary_op = tf.summary.merge(summaries)
-
-    def initialize(self, session):
-        session.run(self._init_op)
-    
     @property
     def input(self):
         return self._input
@@ -284,26 +162,103 @@ class Deepbind_CNN_model(object):
     def config(self):
         return self._config
 
-    
     @property
     def cost(self):
-        return self._cost
+        return self.loss
 
-     
     @property
     def train_op(self):
         return self._train_op
 
     @property
     def predict_op(self):
-        return self._predict_op
+        return tf.squeeze(self.target_predictions)
 
     @property
     def x(self):
-        return self._x
+        return self.rna_sequence
+
     @property
     def y_true(self):
-        return self._y_true
+        return self.target_scores
+
+
+class Deepbind_CNN_struct_model(object):
+    """The deepbind_CNN model with structure"""
+
+    def __init__(self, config, input_):
+        self._config = config
+        self._input = input_
+        self.weight_initializer = tf.truncated_normal_initializer(stddev=config['init_scale'])
+        self.rna_sequence = tf.placeholder(tf.float32, shape=[None, None, 9], name='input_sequence')
+        self.target_scores = tf.placeholder(tf.float32, shape=[None], name='target_scores')
+        self.target_scores_exp = tf.expand_dims(self.target_scores, 1)
+        conv_input = self.rna_sequence
+        for layer in range(config['num_conv_layers']):
+            if layer == (config['num_conv_layers'] - 1):
+                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=1,
+                                                    kernel_size=config['filter_lengths'][layer],
+                                                    strides=config['strides'][layer],
+                                                    padding='SAME', activation=None,
+                                                    kernel_initializer=self.weight_initializer,
+                                                    name='conv_layer_' + str(layer))
+            else:
+                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
+                                                    kernel_size=config['filter_lengths'][layer],
+                                                    strides=config['strides'][layer],
+                                                    padding='SAME', activation=tf.nn.relu,
+                                                    kernel_initializer=self.weight_initializer,
+                                                    name='conv_layer_' + str(layer))
+
+            conv_input = self.conv_output
+        self.conv_output = tf.squeeze(self.conv_output, axis=2)
+        final_pool = config.get('final_pool', 'max')
+        if final_pool == 'max':
+            self.target_predictions = tf.reduce_max(self.conv_output, axis=[1], name='max_pool', keep_dims=True)
+        if final_pool == 'avg':
+            self.target_predictions = tf.reduce_mean(self.conv_output, axis=[1], name='avg_pool', keep_dims=True)
+        if final_pool == 'max_avg':
+            max_pool = tf.reduce_max(self.conv_output, axis=[1], name='max_pool', keep_dims=True)
+            avg_pool = tf.reduce_mean(self.conv_output, axis=[1], name='avg_pool', keep_dims=True)
+            self.target_predictions = tf.layers.dense(tf.concat([max_pool, avg_pool], axis=1), units=1,
+                                                      kernel_regularizer=tf.contrib.layers.l2_regularizer(
+                                                          scale=config['lam_model']),
+                                                      name='target_prediction')
+        self.loss = tf.losses.mean_squared_error(self.target_scores_exp, self.target_predictions,
+                                                 scope='mean_squared_error')
+        self._train_op = tf.contrib.layers.optimize_loss(self.loss, tf.contrib.framework.get_global_step(),
+                                                         learning_rate=tf.constant(config['eta_model'], tf.float32),
+                                                         optimizer='Adam',
+                                                         clip_gradients=config.get('gradient_clip_value', 20.0),
+                                                         name='train_op')
+
+    @property
+    def input(self):
+        return self._input
+
+    @property
+    def config(self):
+        return self._config
+
+    @property
+    def cost(self):
+        return self.loss
+
+    @property
+    def train_op(self):
+        return self._train_op
+
+    @property
+    def predict_op(self):
+        return tf.squeeze(self.target_predictions)
+
+    @property
+    def x(self):
+        return self.rna_sequence
+
+    @property
+    def y_true(self):
+        return self.target_scores
 
 
 class Deepbind_RNN_struct_model(object):
@@ -394,7 +349,7 @@ class Deepbind_RNN_struct_model(object):
 
 
 class Deepbind_RNN_model(object):
-    """The deepbind_RNN model with structure"""
+    """The deepbind_RNN model without structure"""
 
     def __init__(self, config, input_):
         self._config = config
@@ -481,102 +436,6 @@ class Deepbind_RNN_model(object):
         return self.target_scores
 
 
-#
-# class Deepbind_RNN_struct_model(object):
-#     """The deepbind_CNN model with structure"""
-#
-#     def __init__(self, config, input_):
-#         self._config = config
-#         eta_model = config['eta_model']
-#         momentum_model = config['momentum_model']
-#         lam_model = config['lam_model']
-#         seq_length = input_.seq_length
-#
-#         self.motif_len = config['motif_len']  # Tunable Motif length
-#         self.num_motifs = config['num_motifs']  # Number of tunable motifs
-#         self.motif_len2 = config['motif_len']
-#         self.num_motifs2 = config['num_motifs']
-#         self._init_op = tf.global_variables_initializer()
-#
-#         self._x = x = tf.placeholder(tf.float32, shape=[None, seq_length, 9], name='One_hot_data')
-#         self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
-#
-#         x_image = tf.reshape(x, [-1, seq_length, 1, 9])
-#
-#         W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 9, self.num_motifs], stddev=0.01), name='W_Conv1')
-#         b_conv1 = tf.Variable(tf.constant(0.001, shape=[self.num_motifs]), name='b_conv1')
-#
-#         h_conv1 = tf.nn.conv2d(x_image, W_conv1,
-#                                strides=[1, 1, 1, 1], padding='SAME')
-#         h_relu_conv1 = tf.nn.relu(h_conv1 + b_conv1, name='First_layer_output')
-#         W_conv2 = tf.Variable(tf.random_normal([self.motif_len2, 1, self.num_motifs2, 1]), name='W_conv2')
-#         b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name='b_conv2')
-#         h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
-#                                strides=[1, 1, 1, 1], padding='SAME')
-#         n_hidden =10
-#         W_hidden = tf.Variable(tf.random_normal([1,n_hidden]),name='W_hidden')
-#         b_hidden = tf.Variable(tf.constant(0.001, shape=[n_hidden]), name='b_hidden')
-#         W_out = tf.Variable(tf.random_normal([n_hidden,1]), name='W_hidden')
-#         b_out = tf.Variable(tf.constant(0.001, shape=[1]), name='b_hidden')
-#
-#         h_input = tf.reshape(tf.squeeze(h_conv2, axis=[3]),[-1,1])
-#         h_input = tf.matmul(h_input, W_hidden)
-#         h_input = tf.reshape(h_input,[-1,seq_length,n_hidden])
-#         # h_input = tf.unstack(value=h_input,axis=1)
-#         lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
-#         outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32)
-#         h_final = tf.squeeze(tf.matmul(tf.squeeze(tf.slice(outputs,[0,tf.shape(outputs)[1]-1,0],[-1,1,-1])),W_out)+b_out)
-#
-#         cost_batch = tf.square(h_final - y_true)
-#         self._cost = cost = tf.reduce_mean(cost_batch)
-#         # tf.scalar_summary("Training Loss", cost)
-#         norm_w = (tf.reduce_sum(tf.abs(W_conv1)) + tf.reduce_sum(tf.abs(W_conv2)))
-#         # optimizer = tf.train.MomentumOptimizer(learning_rate=eta_model,
-#         #                                        momentum=momentum_model)
-#         optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
-#
-#         self._train_op = optimizer.minimize(cost + norm_w * lam_model)
-#         self._predict_op = h_final
-#
-#         # summaries = []
-#         #
-#         # summaries.append(tf.summary.scalar('cost', self.cost))
-#         # summaries.append(tf.summary.histogram('first_layer', h_relu_conv1))
-#         # summaries.append(tf.summary.histogram('final_layer', h_final))
-#         #
-#         # self.summary_op = tf.summary.merge(summaries)
-#
-#     def initialize(self, session):
-#         session.run(self._init_op)
-#
-#     @property
-#     def input(self):
-#         return self._input
-#
-#     @property
-#     def config(self):
-#         return self._config
-#
-#     @property
-#     def cost(self):
-#         return self._cost
-#
-#     @property
-#     def train_op(self):
-#         return self._train_op
-#
-#     @property
-#     def predict_op(self):
-#         return self._predict_op
-#
-#     @property
-#     def x(self):
-#         return self._x
-#
-#     @property
-#     def y_true(self):
-#         return self._y_true
-
 def Deepbind_model(config, input, model_type):
     if model_type == 'CNN':
         return Deepbind_CNN_model(config, input)
@@ -586,39 +445,6 @@ def Deepbind_model(config, input, model_type):
         return Deepbind_RNN_struct_model(config, input)
     elif model_type == 'RNN':
         return Deepbind_RNN_model(config, input)
-
-def run_epoch(session, model, epoch, eval_op=None, verbose=False, testing=False):
-    """Runs the model on the given data."""
-    fetches = {"cost":model.cost
-               }
-    if eval_op is not None:
-        fetches["eval_op"] = eval_op
-    Nbatch_train = model.input.training_cases // model.config.minib
-    Nbatch_test =  model.input.test_cases // model.config.minib
-    minib = model.config.minib
-    cost_temp = 0
-
-    for i in range(Nbatch_train):
-        mbatchX_train = model.input.training_data[(minib * i): (minib * (i + 1)), :, :]
-        mbatchY_train = model.input.training_labels[(minib * i): (minib * (i + 1))]
-        feed_dict = {model.x:mbatchX_train, model.y_true: mbatchY_train}
-        vals = session.run(fetches, feed_dict)
-        cost_temp = cost_temp + vals["cost"]
-    cost_train = cost_temp / Nbatch_train
-
-    if testing:
-        fetches = {"cost":model.cost,
-               "predictions":model.predict_op}
-        feed_dict = {model._x:model.input.test_data, model._y_true:model.input.test_labels }
-        vals = session.run(fetches, feed_dict)
-        pearson_test = stats.pearsonr(model.input.test_labels, vals["predictions"])[0]
-        cost_test = vals["cost"]
-        if verbose:
-            print ("Epoch:%04d, Train cost=%0.4f, Test cost=%0.4f, Test Pearson=%0.4f" %
-                   (epoch + 1, cost_train, cost_test, pearson_test))
-        return(cost_train, cost_test, pearson_test)
-    return cost_train
-
 
 def run_epoch_parallel(session, models, input_data, config, epoch, train=False, verbose=False, testing=False):
     if isinstance(input_data,list):
@@ -724,63 +550,7 @@ def evaluate_model_parallel(session, config, models, input_data):
         run_epoch_parallel(session, models, input_data, config, 0, train=False, verbose=True, testing=True)
     return (cost_test, pearson_test)
 
-def train_model(session, config, model, early_stop=False):
-    print("Training model")
-    print_config(config)
-    if early_stop:
-        epochs = config.early_stop_epochs
-    else:
-        epochs = config.epochs
-    test_epochs = epochs // config.test_interval
-    cost_train = np.zeros([test_epochs])
-    cost_test = np.zeros([test_epochs])
-    pearson_test = np.zeros([test_epochs])
-    session.run(tf.global_variables_initializer())
-    for i in range(epochs):
-        _ = run_epoch(session, model, i, eval_op=model.train_op)
-        if i % config.test_interval == 0:
-            step = i // config.test_interval
-            (cost_train[step], cost_test[step], pearson_test[step]) = \
-                run_epoch(session, model, i, verbose=True, testing=True)
-    best_epoch = int(np.argmax(pearson_test) * config.test_interval)
-    best_pearson = np.max(pearson_test)
-    last_pearson = pearson_test[-1]
-    return (best_pearson, last_pearson, best_epoch)
 
-
-
-def print_config(config):
-    print("eta = %.4f, momentum =%.2f, lambda =10^%.2f "%(config.eta_model,
-                                                          config.momentum_model,
-                                                          np.log10(config.lam_model)))
-
-class Config_class(object):
-    """Generates configuration"""
-    def __init__(self, eta=0.01, momentum=0.9, lam=0.00001,
-                 minib=100, test_interval=10,
-                 motif_len=16, num_motifs=16, init_scale=0.01, flag='small'):
-        self.eta_model = eta
-        self.momentum_model = momentum
-        self.lam_model = lam
-        self.minib = minib
-        self.test_interval = test_interval
-        self.motif_len = motif_len
-        self.num_motifs = num_motifs
-        self.init_scale = init_scale
-        self.folds = 3
-        if flag == 'large':
-            self.epochs = 15
-            self.early_stop_epochs = 15
-            self.test_interval = 1
-        elif flag == 'medium':
-            self.epochs = 10
-            self.early_stop_epochs = 10
-            self.test_interval = 1
-
-        else:
-            self.epochs = 4
-            self.early_stop_epochs = 4
-            self.test_interval = 1
 
 def create_config_dict(**kwargs):
     config = {}
@@ -795,8 +565,8 @@ def create_config_dict(**kwargs):
         config['early_stop_epochs'] = 10
         config['test_interval'] = 1
     else:
-        config['epochs'] = 4
-        config['early_stop_epochs'] = 4
+        config['epochs'] = 10
+        config['early_stop_epochs'] = 10
         config['test_interval'] = 1
     return config
 
@@ -1016,40 +786,31 @@ def load_data(target_id_list=None, fold_filter='A'):
 def generate_configs_CNN(num_calibrations, flag='small'):
     configs = []
     for i in range(num_calibrations):
-        eta = np.float32(10**(np.random.uniform(-2,-6)))
-        momentum = np.float32(np.random.uniform(0.95,0.99))
-        lam = np.float32(10**(np.random.uniform(-3,-10)))
-        init_scale = np.float32(10**(np.random.uniform(-7,-3)))
+        eta = np.float32(10 ** (np.random.uniform(-2, -6)))
+        lam = np.float32(10 ** (np.random.uniform(-3, -6)))
+        init_scale = np.float32(10 ** (np.random.uniform(-7, -3)))
         minib = 100
         test_interval = 10
-        motif_len = 16
-        num_motifs = 16
-        temp_config = {'eta_model':eta,'momentum_model':momentum,'lam_model':lam,'minib':minib,'test_interval':test_interval,'motif_len':motif_len,
-                       'num_motifs':num_motifs, 'init_scale':init_scale,'flag':flag}
-
-        configs.append(create_config_dict(**temp_config))
-    return configs
-
-def generate_configs_CNN_struct(num_calibrations, flag='small'):
-    configs = []
-    for i in range(num_calibrations):
-        eta = np.float32(10**(np.random.uniform(-2,-6)))
-        momentum = np.float32(np.random.uniform(0.95,0.99))
-        lam = np.float32(10**(np.random.uniform(-3,-6)))
-        init_scale = np.float32(10**(np.random.uniform(-7,-3)))
-        minib = 100
-        test_interval = 10
-        motif_len = 16
-        num_motifs = 16
-        temp_config = {'eta_model': eta, 'momentum_model': momentum, 'lam_model': lam, 'minib': minib,
-                       'test_interval': test_interval, 'motif_len': motif_len,
-                       'num_motifs': num_motifs, 'init_scale': init_scale, 'flag': flag}
+        num_conv_layers = np.random.choice([2, 3, 4])
+        filter_lengths = [16 // (2 ** i) for i in range(num_conv_layers)]
+        num_filters = [8 * (i + 1) for i in range(num_conv_layers)]
+        strides = np.random.choice([1], size=num_conv_layers)
+        pool_windows = np.random.choice([1], size=num_conv_layers)
+        final_pool = np.random.choice(['max', 'avg', 'max_avg'])
+        batchnorm = np.random.choice([True, False])
+        temp_config = {'eta_model': eta, 'lam_model': lam, 'minib': minib,
+                       'test_interval': test_interval, 'filter_lengths': filter_lengths, 'num_filters': num_filters,
+                       'num_conv_layers': num_conv_layers, 'strides': strides,
+                       'pool_windows': pool_windows,
+                       'batchnorm': batchnorm,
+                       'final_pool': final_pool,
+                       'init_scale': init_scale, 'flag': flag}
 
         configs.append(create_config_dict(**temp_config))
     return configs
 
 
-def generate_configs_RNN_struct(num_calibrations, flag='small'):
+def generate_configs_RNN(num_calibrations, flag='small'):
     configs = []
     for i in range(num_calibrations):
         eta = np.float32(10 ** (np.random.uniform(-2, -6)))
@@ -1058,18 +819,13 @@ def generate_configs_RNN_struct(num_calibrations, flag='small'):
         minib = 100
         test_interval = 10
         bidirectional_LSTM = np.random.choice([True, False])
-        bidirectional_LSTM = False
-        num_conv_layers = np.random.choice([2, 3, 4, 5])
-        num_conv_layers = 2
-        filter_lengths = [16 // (i + 1) for i in range(num_conv_layers)]
-        filter_lengths = [16, 16]
+        num_conv_layers = np.random.choice([2, 3, 4])
+        filter_lengths = [16 // (2 ** i) for i in range(num_conv_layers)]
         num_filters = [8 * (i + 1) for i in range(num_conv_layers)]
-        num_filters = [16, 16]
         strides = np.random.choice([1], size=num_conv_layers)
         pool_windows = np.random.choice([1], size=num_conv_layers)
         batchnorm = np.random.choice([True, False])
-        lstm_size = np.random.choice([20, 50, 100])
-        lstm_size = 10
+        lstm_size = np.random.choice([10, 20, 30])
         temp_config = {'eta_model': eta, 'lam_model': lam, 'minib': minib,
                        'test_interval': test_interval, 'filter_lengths': filter_lengths, 'num_filters': num_filters,
                        'num_conv_layers': num_conv_layers, 'lstm_size': lstm_size, 'strides': strides,
@@ -1085,11 +841,11 @@ def generate_configs(num_calibrations, model_type, flag='small'):
     if model_type=='CNN':
         return generate_configs_CNN(num_calibrations, flag)
     if model_type=='CNN_struct':
-        return generate_configs_CNN_struct(num_calibrations, flag)
+        return generate_configs_CNN(num_calibrations, flag)
     if model_type=='RNN_struct':
-        return generate_configs_RNN_struct(num_calibrations, flag)
+        return generate_configs_RNN(num_calibrations, flag)
     if model_type == 'RNN':
-        return generate_configs_RNN_struct(num_calibrations, flag)
+        return generate_configs_RNN(num_calibrations, flag)
 
 def summarize(save_path='../results_final/'):
     protein_list = ['RNCMPT00100',
