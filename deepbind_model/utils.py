@@ -592,7 +592,8 @@ def save_calibration(protein, model_type,flag, config,new_cost,new_pearson, save
     else:
         print("[*] Retaining existing calibration for %s %s %s" % (protein, model_type, flag))
 
-def save_result(protein,model_type,flag,new_cost,new_pearson,save_dir):
+
+def save_result(protein, model_type, flag, new_cost, new_pearson, save_dir, model_index, model_dir):
     import yaml
     file_name = os.path.join(save_dir, protein + '_' + model_type + '_' + flag + '.npz')
     save_new = True
@@ -609,7 +610,8 @@ def save_result(protein,model_type,flag,new_cost,new_pearson,save_dir):
                  cost=new_cost,
                  pearson=new_pearson
                  )
-        result_dict = {'cost':new_cost, 'pearson': new_pearson}
+        result_dict = {'cost': float(new_cost), 'pearson': float(new_pearson), 'model_index': int(model_index),
+                       'model_dir': str(model_dir)}
         yaml.dump(result_dict, open(os.path.join(save_dir, protein + '_' + model_type + '_' + flag + '.yml'),'w'))
 
 def load_calibration(protein, model_type, flag, save_dir):

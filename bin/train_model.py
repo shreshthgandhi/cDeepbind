@@ -74,8 +74,11 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations=5
                 cost = test_cost[abs_best_model_idx, -1]
                 print("Pearson correlation for %s using %s is %.4f" % (
                 target_protein, model_type, test_pearson[abs_best_model_idx, -1]))
-                result_id = traindir[model_type] + '/results_final/' + target_protein + str(model_type)
-                utils.save_result(target_protein, model_type, model_size_flag, cost, pearson, '../results_final')
+                utils.save_result(target_protein, model_type,
+                                  model_size_flag, cost, pearson,
+                                  save_dir='../results_final',
+                                  model_index=abs_best_model_idx,
+                                  model_dir=traindir[model_type])
 
 
 if __name__ == "__main__":
@@ -90,7 +93,7 @@ if __name__ == "__main__":
     if not (config.get('summary_only', False)):
         for protein_id in args.protein:
             main(target_protein=protein_id, model_size_flag=config.get('model_scale', 'large'),
-                 model_testing_list=config.get('model_type', ['RNN_struct']),
+                 model_testing_list=config.get('model_testing_list', ['RNN_struct']),
                  num_calibrations=config.get('num_calibrations', 5),
                  recalibrate=config.get('recalibrate', False))
     utils.summarize()
