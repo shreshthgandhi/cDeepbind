@@ -1,5 +1,5 @@
 num_model_trials: 3
-model_testing_list: [CNN_struct]
+model_testing_list: [RNN]
 model_size_flag: large
 num_calibrations: 5
 recalibrate: True

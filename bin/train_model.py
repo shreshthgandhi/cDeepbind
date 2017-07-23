@@ -34,7 +34,7 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations, 
                                                                   num_calibrations=num_calibrations,
                                                                   model_type=model_type,
                                                                   flag='small')
-        best_config[model_type]['epochs'] = 10  # Change this to be more general
+        best_config[model_type]['epochs'] = 15  # Change this to be more general
 
     ##### Encapsulate in single function
     target_file = '../data/rnac/npz_archives/' + str(target_protein) + '.npz'

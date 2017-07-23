@@ -6,10 +6,10 @@ import tensorflow as tf
 from sklearn.model_selection import KFold
 
 
-class Deepbind_CNN_input(object):
+class Deepbind_no_struct_input(object):
     """The deepbind_CNN model input without structure"""
 
-    def __init__(self, config, inf, validation=False, fold_id=1, normalization=True):
+    def __init__(self, config, inf, validation=False, fold_id=1):
         self.folds = folds = config.folds
         (data_one_hot_training, labels_training,
          data_one_hot_test, labels_test,
@@ -49,10 +49,10 @@ class Deepbind_CNN_input(object):
         self.test_cases = self.test_data.shape[0]
 
 
-class Deepbind_CNN_struct_input(object):
+class Deepbind_struct_input(object):
     """The deepbind_CNN model input with structure"""
 
-    def __init__(self, config, inf, validation=False, fold_id=1, normalization=True):
+    def __init__(self, config, inf, validation=False, fold_id=1):
         self.folds = folds = config.folds
         (data_one_hot_training, labels_training,
          data_one_hot_test, labels_test,
@@ -71,7 +71,7 @@ class Deepbind_CNN_struct_input(object):
         validation_index = range(self.test_cases)
         if validation:
             kf = KFold(n_splits=folds)
-            indices = kf.split(range(self.training_cases))
+            indices = kf.split(np.random.choice(training_cases, replace=False, size=self.training_cases))
             check = 1
             for train_idx, val_idx in indices:
                 if(check == fold_id):
@@ -99,13 +99,10 @@ class Deepbind_CNN_struct_input(object):
         self.test_cases = self.test_data.shape[0]
 
 def Deepbind_input(input_config,inf,model,validation=False,fold_id=1):
-    if model == 'CNN':
-        return Deepbind_CNN_input(input_config, inf, validation, fold_id)
-    elif model == 'CNN_struct':
-        return Deepbind_CNN_struct_input(input_config, inf, validation, fold_id)
-    elif model == 'RNN_struct':
-        return Deepbind_CNN_struct_input(input_config, inf, validation, fold_id)
-
+    if 'struct' in model or 'STRUCT' in model:
+        return Deepbind_struct_input(input_config, inf, validation, fold_id)
+    else:
+        return Deepbind_no_struct_input(input_config, inf, validation, fold_id)
 
 class Deepbind_CNN_model(object):
     """The deepbind_CNN model without structure"""
@@ -823,7 +820,7 @@ def generate_configs_RNN(num_calibrations, flag='small'):
         minib = 100
         test_interval = 10
         bidirectional_LSTM = np.random.choice([True, False])
-        num_conv_layers = np.random.choice([2, 3, 4])
+        num_conv_layers = np.random.choice([2])
         filter_lengths = [16 // (2 ** i) for i in range(num_conv_layers)]
         num_filters = [8 * (i + 1) for i in range(num_conv_layers)]
         strides = np.random.choice([1], size=num_conv_layers)
@@ -1097,17 +1094,13 @@ def summarize(save_path='../results_final/'):
                     'RNCMPT00099',
                     'RNCMPT00009']
     print("[*] Updating result summary")
-    model_list = ['CNN_struct', 'CNN', 'RNN_struct']
+    model_list = ['CNN_struct', 'CNN', 'RNN_struct', 'RNN']
     result_file = open(save_path+'summary.tsv', 'w')
     heading = 'Protein\t' + '\t'.join(model_list) + '\n'
     result_file.write(heading)
     count = 0
     for protein in protein_list:
-        # files = glob.glob(save_path+protein+'*large.npz')
-        # if files:
         result_file.write(protein)
-        # values = [np.load(file)['pearson'] for file in files]
-        # result_file.write('\t'+'\t'.join(str(values))+'\n')
         for model in model_list:
             if os.path.isfile(save_path + protein + '_' + model + '_large.npz'):
                 read_file = np.load(save_path + protein + '_' + model + '_large.npz')
