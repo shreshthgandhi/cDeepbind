@@ -784,6 +784,69 @@ def load_data(target_id_list=None, fold_filter='A'):
              seq_length=seq_length)
 
 
+def load_data_rnac2009(protein_name):
+    data_folder = '../data/rnac_2009/full'
+    structure_folder = '../data/rnac_2009/full/structure_annotations'
+    training_seqs = []
+    training_scores = []
+    test_seqs = []
+    test_scores = []
+    with open(os.path.join(data_folder, protein_name + '_data_full_A.txt'), 'r') as training_file:
+        for line in training_file:
+            training_scores.append(line.split('\t')[0])
+            training_seqs.append(line.split('\t')[1])
+
+    with open(os.path.join(data_folder, protein_name + '_data_full_B.txt'), 'r') as test_file:
+        for line in test_file:
+            test_scores.append(line.split('\t')[0])
+            test_seqs.append(line.split('\t')[1])
+    seq_len_train = max([len(seq) for seq in training_seqs])
+    seq_enc = np.ones((len(training_seqs), seq_len_train, 4)) * 0.25
+    for i, case in enumerate(training_seqs):
+        for j, nuc in enumerate(case):
+            if nuc == 'A':
+                seq_enc[i, j] = np.array([1, 0, 0, 0])
+            elif nuc == 'G':
+                seq_enc[i, j] = np.array([0, 1, 0, 0])
+            elif nuc == 'C':
+                seq_enc[i, j] = np.array([0, 0, 1, 0])
+            elif nuc == 'U':
+                seq_enc[i, j] = np.array([0, 0, 0, 1])
+            elif nuc == 'T':
+                seq_enc[i, j] = np.arrray([0, 0, 0, 1])
+    seq_enc -= 0.25
+    data_one_hot_training = np.array(seq_enc)
+
+    seq_len_test = max([len(seq) for seq in test_seqs])
+    seq_enc = np.ones((len(test_seqs), seq_len_test, 4)) * 0.25
+    for i, case in enumerate(test_seqs):
+        for j, nuc in enumerate(case):
+            if nuc == 'A':
+                seq_enc[i, j] = np.array([1, 0, 0, 0])
+            elif nuc == 'G':
+                seq_enc[i, j] = np.array([0, 1, 0, 0])
+            elif nuc == 'C':
+                seq_enc[i, j] = np.array([0, 0, 1, 0])
+            elif nuc == 'U':
+                seq_enc[i, j] = np.array([0, 0, 0, 1])
+            elif nuc == 'T':
+                seq_enc[i, j] = np.arrray([0, 0, 0, 1])
+    seq_enc -= 0.25
+    data_one_hot_test = np.array(seq_enc)
+    labels_training = np.array(training_scores, dtype=np.float32)
+    labels_test = np.array(test_scores, dtype=np.float32)
+    training_cases = data_one_hot_training.shape[0]
+    test_cases = data_one_hot_test.shape[0]
+    save_target = os.path.join('../data/rnac_2009/npz_archives/', protein_name + '.npz')
+    np.savez(save_target, data_one_hot_training=data_one_hot_training,
+             labels_training=labels_training,
+             data_one_hot_test=data_one_hot_test,
+             labels_test=labels_test, training_cases=training_cases,
+             test_cases=test_cases,
+             seq_length=max(seq_len_train, seq_len_test))
+
+
+
 def generate_configs_CNN(num_calibrations, flag='small'):
     configs = []
     for i in range(num_calibrations):
