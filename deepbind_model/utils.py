@@ -789,6 +789,9 @@ def load_data_rnac2009(protein_name):
     structure_folder = '../data/rnac_2009/full/structure_annotations'
     training_seqs = []
     training_scores = []
+    training_structs = []
+    test_structs = []
+    num_struct_classes = 5
     test_seqs = []
     test_scores = []
     with open(os.path.join(data_folder, protein_name + '_data_full_A.txt'), 'r') as training_file:
@@ -800,7 +803,29 @@ def load_data_rnac2009(protein_name):
         for line in test_file:
             test_scores.append(line.split('\t')[0])
             test_seqs.append(line.split('\t')[1])
+
     seq_len_train = max([len(seq) for seq in training_seqs])
+    seq_len_test = max([len(seq) for seq in test_seqs])
+
+    with open(os.path.join(structure_folder, protein_name + '_data_full_A_profile'), 'r') as train_struct_file:
+        for line in train_struct_file:
+            probs = np.ones([num_struct_classes, seq_len_train]) * (1 / num_struct_classes)
+            for i in range(5):
+                values_line = train_struct_file.next().strip()
+                values = np.array(map(np.float32, values_line.split('\t')))
+                probs[i, 0:values.shape[0]] = values
+            training_structs.append(probs)
+    with open(os.path.join(structure_folder, protein_name + '_data_full_B_profile'), 'r') as test_struct_file:
+        for line in test_struct_file:
+            probs = np.ones([num_struct_classes, seq_len_test]) * (1 / num_struct_classes)
+            for i in range(5):
+                values_line = test_struct_file.next().strip()
+                values = np.array(map(np.float32, values_line.split('\t')))
+                probs[i, 0:values.shape[0]] = values
+            test_structs.append(probs)
+
+
+
     seq_enc = np.ones((len(training_seqs), seq_len_train, 4)) * 0.25
     for i, case in enumerate(training_seqs):
         for j, nuc in enumerate(case):
@@ -817,7 +842,6 @@ def load_data_rnac2009(protein_name):
     seq_enc -= 0.25
     data_one_hot_training = np.array(seq_enc)
 
-    seq_len_test = max([len(seq) for seq in test_seqs])
     seq_enc = np.ones((len(test_seqs), seq_len_test, 4)) * 0.25
     for i, case in enumerate(test_seqs):
         for j, nuc in enumerate(case):
@@ -843,6 +867,8 @@ def load_data_rnac2009(protein_name):
              data_one_hot_test=data_one_hot_test,
              labels_test=labels_test, training_cases=training_cases,
              test_cases=test_cases,
+             structures_train=np.array(training_structs, np.float32),
+             structures_test=np.array(test_structs, np.float32),
              seq_length=max(seq_len_train, seq_len_test))
 
 

@@ -2,60 +2,62 @@ import argparse
 import os.path
 import subprocess
 
+from deepbind_model.utils import load_data_rnac2009
+
 
 def clip_struct_compute():
-    rnac_folder = '../data/rnac/npz_archives/'
-    save_folder = '../data/GraphProt_CLIP_sequences/structure_profiles/'
+    save_folder = '../data/GraphProt_CLIP_sequences/structure_annotations/'
     clip_experiments = ['CLIPSEQ_ELAVL1', 'PARCLIP_ELAVL1', 'PARCLIP_ELAVL1A', 'PARCLIP_FUS',
                         'ICLIP_HNRNPC', 'PARCLIP_HUR', 'PARCLIP_IGF2BP123', 'PTBv1',
                         'PARCLIP_PUM2', 'PARCLIP_QKI', 'CLIPSEQ_SFRS1', 'ICLIP_TIA1']
-    clip_experiment = os.path.join('../data/GraphProt_CLIP_sequences/', clip_experiments[0])
-    W = '180'
-    L = '120'
-    positives_file = clip_experiment + '.train.positives.fa'
-    negatives_file = clip_experiment + '.train.negatives.fa'
-    print("[*] Starting RNAplfold for " + clip_experiment)
-    E_process_pos = subprocess.Popen([
-                                         "../RNAplfold_scripts/RNAplfold_scripts/E_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + positives_file + " >" + save_folder + "E_profile_pos.txt"],
-                                     shell=True)
-    H_process_pos = subprocess.Popen([
-                                         "../RNAplfold_scripts/RNAplfold_scripts/H_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + positives_file + " >" + save_folder + "H_profile_pos.txt"],
-                                     shell=True)
-    I_process_pos = subprocess.Popen([
-                                         "../RNAplfold_scripts/RNAplfold_scripts/I_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + positives_file + " >" + save_folder + "I_profile_pos.txt"],
-                                     shell=True)
-    M_process_pos = subprocess.Popen([
-                                         "../RNAplfold_scripts/RNAplfold_scripts/M_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + positives_file + " >" + save_folder + "M_profile_pos.txt"],
-                                     shell=True)
+    clip_experiments = ['CLIPSEQ_ELAVL1']
+    for clip_experiment_name in clip_experiments:
+        clip_experiment = os.path.join('../data/GraphProt_CLIP_sequences/', clip_experiment_name)
+        W = '180'
+        L = '120'
+        positives_file = clip_experiment + '.train.positives.fa'
+        negatives_file = clip_experiment + '.train.negatives.fa'
+        print("[*] Starting RNAplfold for " + clip_experiment)
+        E_process_pos = subprocess.Popen([
+                                             "../RNAplfold_scripts/RNAplfold_scripts/E_RNAplfold" + " -W " + W + " -L " + L + " -u 1 <" + positives_file + " >" + save_folder + "E_profile_pos.txt"],
+                                         shell=True)
+        H_process_pos = subprocess.Popen([
+                                             "../RNAplfold_scripts/RNAplfold_scripts/H_RNAplfold" + " -W " + W + " -L " + L + "-u 1 <" + positives_file + " >" + save_folder + "H_profile_pos.txt"],
+                                         shell=True)
+        I_process_pos = subprocess.Popen([
+            "../RNAplfold_scripts/RNAplfold_scripts/I_RNAplfold" + " -W " + W + " -L " + L + "-u 1 <" + positives_file + " >" + save_folder + "I_profile_pos.txt"],
+            shell=True)
+        M_process_pos = subprocess.Popen([
+            "../RNAplfold_scripts/RNAplfold_scripts/M_RNAplfold" + " -W " + W + " -L " + L + "-u 1  <" + positives_file + " >" + save_folder + "M_profile_pos.txt"],
+            shell=True)
 
-    E_process_neg = subprocess.Popen([
-        "../RNAplfold_scripts/RNAplfold_scripts/E_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "E_profile_neg.txt"],
-        shell=True)
-    H_process_neg = subprocess.Popen([
-        "../RNAplfold_scripts/RNAplfold_scripts/H_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "H_profile_neg.txt"],
-        shell=True)
-    I_process_neg = subprocess.Popen([
-        "../RNAplfold_scripts/RNAplfold_scripts/I_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "I_profile_neg.txt"],
-        shell=True)
-    M_process_neg = subprocess.Popen([
-        "../RNAplfold_scripts/RNAplfold_scripts/M_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "M_profile_neg.txt"],
-        shell=True)
+        E_process_neg = subprocess.Popen([
+            "../RNAplfold_scripts/RNAplfold_scripts/E_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "E_profile_neg.txt"],
+            shell=True)
+        H_process_neg = subprocess.Popen([
+            "../RNAplfold_scripts/RNAplfold_scripts/H_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "H_profile_neg.txt"],
+            shell=True)
+        I_process_neg = subprocess.Popen([
+            "../RNAplfold_scripts/RNAplfold_scripts/I_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "I_profile_neg.txt"],
+            shell=True)
+        M_process_neg = subprocess.Popen([
+            "../RNAplfold_scripts/RNAplfold_scripts/M_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "M_profile_neg.txt"],
+            shell=True)
 
-
-    processes = [E_process_pos, H_process_pos, I_process_pos, M_process_pos, E_process_neg, H_process_neg,
-                 I_process_neg, M_process_neg]
-    for p in processes:
-        p.wait()
-    print("[*] Finished structure profiles for " + clip_experiment)
-    subprocess.call(["python", "../RNAplfold_scripts/RNAplfold_scripts/combine_letter_profiles.py",
-                     save_folder + "E_profile_pos.txt", save_folder + "H_profile_pos.txt",
-                     save_folder + "I_profile_pos.txt", save_folder + "M_profile_pos.txt", "1",
-                     clip_experiment + "_pos.txt"])
-    subprocess.call(["python", "../RNAplfold_scripts/RNAplfold_scripts/combine_letter_profiles.py",
-                     save_folder + "E_profile_neg.txt", save_folder + "H_profile_neg.txt",
-                     save_folder + "I_profile_neg.txt", save_folder + "M_profile_neg.txt", "1",
-                     clip_experiment + "_neg.txt"])
-    print("[*] Combined letter profiles for " + clip_experiment)
+        processes = [E_process_pos, H_process_pos, I_process_pos, M_process_pos, E_process_neg, H_process_neg,
+                     I_process_neg, M_process_neg]
+        for p in processes:
+            p.wait()
+        print("[*] Finished structure profiles for " + clip_experiment)
+        subprocess.call(["python ../RNAplfold_scripts/RNAplfold_scripts/combine_letter_profiles.py " + \
+                         save_folder + "E_profile_pos.txt " + save_folder + "H_profile_pos.txt " + \
+                         save_folder + "I_profile_pos.txt " + save_folder + "M_profile_pos.txt 1 " + \
+                         clip_experiment + "_pos.txt"], shell=True)
+        subprocess.call(["python ../RNAplfold_scripts/RNAplfold_scripts/combine_letter_profiles.py " + \
+                         save_folder + "E_profile_neg.txt " + save_folder + "H_profile_neg.txt " + \
+                         save_folder + "I_profile_neg.txt ", save_folder + "M_profile_neg.txt 1 " + \
+                         clip_experiment + "_neg.txt"], shell=True)
+        print("[*] Combined letter profiles for " + clip_experiment)
 
 
 def rnac_2009_struct_compute():
@@ -107,14 +109,19 @@ def rnac_2009_struct_compute():
         print("[*] Finished structure profiles for " + rnac_experiment)
 
 
-def main(dataset_type):
+def main(dataset_type, protein):
     if dataset_type == 'CLIP':
         clip_struct_compute()
     elif dataset_type == 'RNAC_2009':
         rnac_2009_struct_compute()
+    elif dataset_type == 'RNAC_2009_numpy':
+        load_data_rnac2009(protein_name=protein)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_type', default=None)
+    parser.add_argument('--protein', default='SF2')
     args = parser.parse_args()
-    main(dataset_type=args.dataset_type)
+    main(dataset_type=args.dataset_type,
+         protein=args.protein)
