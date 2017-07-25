@@ -36,12 +36,7 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations, 
                                                                   flag='small')
         best_config[model_type]['epochs'] = 15  # Change this to be more general
 
-    ##### Encapsulate in single function
-    target_file = '../data/rnac/npz_archives/' + str(target_protein) + '.npz'
-    if not (os.path.isfile(target_file)):
-        utils.load_data(target_id_list=[target_protein])
-    inf = np.load(target_file)
-    ####
+    inf = utils.load_data(target_protein)
     models = []
     inputs = []
     input_data = {}

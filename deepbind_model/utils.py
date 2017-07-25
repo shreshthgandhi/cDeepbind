@@ -671,7 +671,8 @@ class input_config(object):
             self.training_frac = 0.1
             self.test_frac = 1
 
-def load_data(target_id_list=None, fold_filter='A'):
+
+def load_data_rnac2013(target_id_list=None, fold_filter='A'):
     # type: (object, object) -> object
     infile_seq = open('../data/rnac/sequences.tsv')
     infile_target = open('../data/rnac/targets.tsv')
@@ -905,6 +906,17 @@ def load_data_rnac2009(protein_name):
     print("[*] Finished loading data for " + protein_name)
 
 
+def load_data(protein_name):
+    if 'RNCMPT' in protein_name:
+        if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
+            print("[!] Processing input for " + protein_name)
+            load_data_rnac2013([protein_name])
+        return np.load('../data/rnac/npz_archives/' + str(protein_name) + '.npz')
+    else:
+        if not (os.path.isfile('../data/rnac_2009/npz_archives/' + str(protein_name) + '.npz')):
+            print("[!] Processing input for " + protein_name)
+            load_data_rnac2009(protein_name)
+        return np.load('../data/rnac_2009/npz_archives/' + str(protein_name) + '.npz')
 
 def generate_configs_CNN(num_calibrations, flag='small'):
     configs = []
