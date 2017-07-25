@@ -539,6 +539,38 @@ def train_model_parallel(session, config, models, input_data, early_stop = False
     return (cost_test,pearson_test)
 
 
+def compute_gradient(session, model, input_data, config):
+    Nbatch_train = input_data.training_cases // config['minib']
+    Nbatch_test = input_data.test_cases // config['minib']
+    minib = config['minib']
+    predictions_train = []
+    gradients_train = []
+    predictions_test = []
+    gradients_test = []
+
+    for step in range(Nbatch_train):
+        fetches = {}
+        feed_dict = {}
+        feed_dict[model.x] = input_data.training_data[(minib * step): (minib * (step + 1)), :, :]
+        feed_dict[model.y_true] = input_data.training_labels[(minib * step): (minib * (step + 1))]
+        fetches["predictions"] = model.predict_op
+        fetches['gradient'] = tf.gradients(model.cost, model.x)
+        vals = session.run(fetches, feed_dict)
+        predictions_train.append(vals['predictions'])
+        gradients_train.append(vals['gradients'])
+
+    for step in range(Nbatch_test):
+        fetches = {}
+        feed_dict = {}
+        feed_dict[model.x] = input_data.test_data[(minib * step): (minib * (step + 1)), :, :]
+        feed_dict[model.y_true] = input_data.test_labels[(minib * step): (minib * (step + 1))]
+        fetches["predictions"] = model.predict_op
+        fetches['gradient'] = tf.gradients(model.cost, model.x)
+        vals = session.run(fetches, feed_dict)
+        predictions_test.append(vals['predictions'])
+        gradients_test.append(vals['gradients'])
+
+
 def evaluate_model_parallel(session, config, models, input_data):
     """Evaluates a list of models in parallel. Expects a list of inputs of equal length as models"""
     num_models = len(models)
@@ -797,12 +829,12 @@ def load_data_rnac2009(protein_name):
     with open(os.path.join(data_folder, protein_name + '_data_full_A.txt'), 'r') as training_file:
         for line in training_file:
             training_scores.append(line.split('\t')[0])
-            training_seqs.append(line.split('\t')[1])
+            training_seqs.append(line.split('\t')[1].strip())
 
     with open(os.path.join(data_folder, protein_name + '_data_full_B.txt'), 'r') as test_file:
         for line in test_file:
             test_scores.append(line.split('\t')[0])
-            test_seqs.append(line.split('\t')[1])
+            test_seqs.append(line.split('\t')[1].strip())
 
     seq_len_train = max([len(seq) for seq in training_seqs])
     seq_len_test = max([len(seq) for seq in test_seqs])
@@ -838,7 +870,7 @@ def load_data_rnac2009(protein_name):
             elif nuc == 'U':
                 seq_enc[i, j] = np.array([0, 0, 0, 1])
             elif nuc == 'T':
-                seq_enc[i, j] = np.arrray([0, 0, 0, 1])
+                seq_enc[i, j] = np.array([0, 0, 0, 1])
     seq_enc -= 0.25
     data_one_hot_training = np.array(seq_enc)
 
@@ -854,7 +886,7 @@ def load_data_rnac2009(protein_name):
             elif nuc == 'U':
                 seq_enc[i, j] = np.array([0, 0, 0, 1])
             elif nuc == 'T':
-                seq_enc[i, j] = np.arrray([0, 0, 0, 1])
+                seq_enc[i, j] = np.array([0, 0, 0, 1])
     seq_enc -= 0.25
     data_one_hot_test = np.array(seq_enc)
     labels_training = np.array(training_scores, dtype=np.float32)
@@ -870,6 +902,7 @@ def load_data_rnac2009(protein_name):
              structures_train=np.array(training_structs, np.float32),
              structures_test=np.array(test_structs, np.float32),
              seq_length=max(seq_len_train, seq_len_test))
+    print("[*] Finished loading data for " + protein_name)
 
 
 

@@ -26,9 +26,9 @@ def main(target_protein, model_type):
         with tf.Session() as sess:
             saver.restore(sess,
                           os.path.join(model_dir, target_protein + '_best_model.ckpt'))
-            scores = utils.evaluate_model_parallel(sess, config, [model], input_data)
-        print(scores)
-
+            # scores = utils.evaluate_model_parallel(sess, config, [model], input_data)
+            utils.compute_gradient(sess, config, model, input_data)
+            # print(scores)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

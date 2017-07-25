@@ -3,4 +3,4 @@ model_testing_list: [RNN]
 model_size_flag: large
 num_calibrations: 5
 recalibrate: True
-summary_only: False
+summary_only: True
