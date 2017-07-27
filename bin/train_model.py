@@ -1,6 +1,7 @@
 import argparse
 import os.path
 from datetime import datetime
+from time import time
 
 import numpy as np
 import tensorflow as tf
@@ -85,6 +86,7 @@ if __name__ == "__main__":
     config = yaml.load(open(args.configuration, 'r'))
     if args.gpus is not None:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, args.gpus))
+    start_time = time()
     if not (config.get('summary_only', False)):
         for protein_id in args.protein:
             main(target_protein=protein_id, model_size_flag=config.get('model_scale', 'large'),
@@ -93,4 +95,6 @@ if __name__ == "__main__":
                  recalibrate=config.get('recalibrate', False),
                  num_final_runs=config.get('num_final_runs', 3),
                  train_epochs=config.get('train_epochs', 15))
+    average_time = (time() - start_time) / len(args.protein)
+    print("Finished process in %.4f seconds per protein" % (average_time))
     utils.summarize()

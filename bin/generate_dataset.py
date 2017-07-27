@@ -83,8 +83,8 @@ def rnac_2009_struct_compute():
     rnac_experiment_list = [file.replace('.txt', '.fasta') for file in seq_files]
     for rnac_experiment in rnac_experiment_list:
         rnac_fasta_file = os.path.join(fasta_folder, rnac_experiment)
-        W = '24'
-        L = '16'
+        W = '29'
+        L = '29'
         print("[*] Starting secondary structure prediction for " + rnac_experiment)
         E_process = subprocess.Popen([
                                          '../RNAplfold_scripts/RNAplfold_scripts/E_RNAplfold -W ' + W + ' -L ' + L + ' -u 1 <' + rnac_fasta_file + ' >' + os.path.join(

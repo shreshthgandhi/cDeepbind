@@ -352,15 +352,11 @@ class Deepbind_RNN_struct_model(object):
     def __init__(self, config, input_):
         self._config = config
         eta_model = config['eta_model']
-        momentum_model = config['momentum_model']
         lam_model = config['lam_model']
-        # seq_length = input_.seq_length
-
         self.motif_len = config['motif_len']  # Tunable Motif length
         self.num_motifs = config['num_motifs']  # Number of tunable motifs
         self.motif_len2 = config['motif_len']
         self._init_op = tf.global_variables_initializer()
-
         self._x = x = tf.placeholder(tf.float32, shape=[None, None, 9], name='One_hot_data')
         self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
         x_image = tf.expand_dims(x, 2)
@@ -423,65 +419,50 @@ class Deepbind_RNN_struct_model(object):
     def y_true(self):
         return self._y_true
 
-
 class Deepbind_RNN_model(object):
-    """The deepbind_RNN model without structure"""
+    """The deepbind_RNN model with structure"""
 
     def __init__(self, config, input_):
         self._config = config
-        self._input = input_
-        self.weight_initializer = tf.truncated_normal_initializer(stddev=config['init_scale'])
-        self.rna_sequence = tf.placeholder(tf.float32, shape=[None, None, 4], name='input_sequence')
-        self.target_scores = tf.placeholder(tf.float32, shape=[None], name='target_scores')
-        self.target_scores_exp = tf.expand_dims(self.target_scores, 1)
-        conv_input = self.rna_sequence
-        for layer in range(config['num_conv_layers']):
-            if layer == (config['num_conv_layers'] - 1):
-                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
-                                                    kernel_size=config['filter_lengths'][layer],
-                                                    strides=config['strides'][layer],
-                                                    padding='SAME', activation=None,
-                                                    kernel_initializer=self.weight_initializer,
-                                                    name='conv_layer_' + str(layer))
-            else:
-                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
-                                                    kernel_size=config['filter_lengths'][layer],
-                                                    strides=config['strides'][layer],
-                                                    padding='SAME', activation=tf.nn.relu,
-                                                    kernel_initializer=self.weight_initializer,
-                                                    name='conv_layer_' + str(layer))
+        eta_model = config['eta_model']
+        lam_model = config['lam_model']
+        self.motif_len = config['motif_len']  # Tunable Motif length
+        self.num_motifs = config['num_motifs']  # Number of tunable motifs
+        self.motif_len2 = config['motif_len']
+        self._init_op = tf.global_variables_initializer()
+        self._x = x = tf.placeholder(tf.float32, shape=[None, None, 4], name='One_hot_data')
+        self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
+        x_image = tf.expand_dims(x, 2)
 
-            conv_input = self.conv_output
-        if config.get('bidirectional_LSTM', False):
-            lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
-                                                   initializer=self.weight_initializer,
-                                                   )
-            lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
-                                                   initializer=self.weight_initializer,
-                                                   )
-            ((output_fw, output_bw), state) = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell,
-                                                                              self.conv_output, dtype=tf.float32,
-                                                                              scope='bidirectional_lstm')
-            self.lstm_output = tf.concat([output_fw[:, -1, :], output_bw[:, -1, :]], 1,
-                                         name='concatenated_lstm_output')
-        else:
-            lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
-                                                   initializer=self.weight_initializer,
-                                                   )
-            output, state = tf.nn.dynamic_rnn(lstm_fw_cell, self.conv_output, dtype=tf.float32,
-                                              scope='unidirectional_lstm')
-            self.lstm_output = output[:, -1, :]
-        self.target_predictions = tf.layers.dense(self.lstm_output, units=1,
-                                                  kernel_regularizer=
-                                                  tf.contrib.layers.l2_regularizer(scale=config['lam_model']),
-                                                  name='target_prediction')
-        self.loss = tf.losses.mean_squared_error(self.target_scores_exp, self.target_predictions,
-                                                 scope='mean_squared_error')
-        self._train_op = tf.contrib.layers.optimize_loss(self.loss, tf.contrib.framework.get_global_step(),
-                                                         learning_rate=tf.constant(config['eta_model'], tf.float32),
-                                                         optimizer='Adam',
-                                                         clip_gradients=config.get('gradient_clip_value', 20.0),
-                                                         name='train_op')
+        W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 4, self.num_motifs], stddev=0.01), name='W_Conv1')
+        b_conv1 = tf.Variable(tf.constant(0.001, shape=[self.num_motifs]), name='b_conv1')
+
+        h_conv1 = tf.nn.conv2d(x_image, W_conv1,
+                               strides=[1, 1, 1, 1], padding='SAME')
+        h_relu_conv1 = tf.nn.relu(h_conv1 + b_conv1, name='First_layer_output')
+        W_conv2 = tf.Variable(tf.random_normal([self.motif_len2, 1, self.num_motifs, 1]), name='W_conv2')
+        b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name='b_conv2')
+        h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
+                               strides=[1, 1, 1, 1], padding='SAME')
+        n_hidden = config.get('lstm_size', 10)
+        W_out = tf.Variable(tf.random_normal([n_hidden, 1]), name='W_hidden')
+        b_out = tf.Variable(tf.constant(0.001, shape=[1]), name='b_hidden')
+        h_input = tf.squeeze(tf.nn.relu(h_conv2 + b_conv2), axis=[3], name='lstm_input')
+        lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
+        outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32)
+        h_final = tf.squeeze(
+            tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1])), W_out) + b_out)
+
+        cost_batch = tf.square(h_final - y_true)
+        self._cost = cost = tf.reduce_mean(cost_batch, name='cost')
+        norm_w = (tf.reduce_sum(tf.abs(W_conv1)) + tf.reduce_sum(tf.abs(W_conv2)) + tf.reduce_sum(tf.abs(W_out)))
+        optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
+
+        self._train_op = optimizer.minimize(cost + norm_w * lam_model)
+        self._predict_op = h_final
+
+    def initialize(self, session):
+        session.run(self._init_op)
 
     @property
     def input(self):
@@ -493,7 +474,7 @@ class Deepbind_RNN_model(object):
 
     @property
     def cost(self):
-        return self.loss
+        return self._cost
 
     @property
     def train_op(self):
@@ -501,15 +482,104 @@ class Deepbind_RNN_model(object):
 
     @property
     def predict_op(self):
-        return tf.squeeze(self.target_predictions)
+        return self._predict_op
 
     @property
     def x(self):
-        return self.rna_sequence
+        return self._x
 
     @property
     def y_true(self):
-        return self.target_scores
+        return self._y_true
+
+
+#
+# class Deepbind_RNN_model(object):
+#     """The deepbind_RNN model without structure"""
+#
+#     def __init__(self, config, input_):
+#         self._config = config
+#         self._input = input_
+#         self.weight_initializer = tf.truncated_normal_initializer(stddev=config['init_scale'])
+#         self.rna_sequence = tf.placeholder(tf.float32, shape=[None, None, 4], name='input_sequence')
+#         self.target_scores = tf.placeholder(tf.float32, shape=[None], name='target_scores')
+#         self.target_scores_exp = tf.expand_dims(self.target_scores, 1)
+#         conv_input = self.rna_sequence
+#         for layer in range(config['num_conv_layers']):
+#             if layer == (config['num_conv_layers'] - 1):
+#                 self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
+#                                                     kernel_size=config['filter_lengths'][layer],
+#                                                     strides=config['strides'][layer],
+#                                                     padding='SAME', activation=None,
+#                                                     kernel_initializer=self.weight_initializer,
+#                                                     name='conv_layer_' + str(layer))
+#             else:
+#                 self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
+#                                                     kernel_size=config['filter_lengths'][layer],
+#                                                     strides=config['strides'][layer],
+#                                                     padding='SAME', activation=tf.nn.relu,
+#                                                     kernel_initializer=self.weight_initializer,
+#                                                     name='conv_layer_' + str(layer))
+#
+#             conv_input = self.conv_output
+#         if config.get('bidirectional_LSTM', False):
+#             lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
+#                                                    initializer=self.weight_initializer,
+#                                                    )
+#             lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
+#                                                    initializer=self.weight_initializer,
+#                                                    )
+#             ((output_fw, output_bw), state) = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell,
+#                                                                               self.conv_output, dtype=tf.float32,
+#                                                                               scope='bidirectional_lstm')
+#             self.lstm_output = tf.concat([output_fw[:, -1, :], output_bw[:, -1, :]], 1,
+#                                          name='concatenated_lstm_output')
+#         else:
+#             lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(num_units=config['lstm_size'],
+#                                                    initializer=self.weight_initializer,
+#                                                    )
+#             output, state = tf.nn.dynamic_rnn(lstm_fw_cell, self.conv_output, dtype=tf.float32,
+#                                               scope='unidirectional_lstm')
+#             self.lstm_output = output[:, -1, :]
+#         self.target_predictions = tf.layers.dense(self.lstm_output, units=1,
+#                                                   kernel_regularizer=
+#                                                   tf.contrib.layers.l2_regularizer(scale=config['lam_model']),
+#                                                   name='target_prediction')
+#         self.loss = tf.losses.mean_squared_error(self.target_scores_exp, self.target_predictions,
+#                                                  scope='mean_squared_error')
+#         self._train_op = tf.contrib.layers.optimize_loss(self.loss, tf.contrib.framework.get_global_step(),
+#                                                          learning_rate=tf.constant(config['eta_model'], tf.float32),
+#                                                          optimizer='Adam',
+#                                                          clip_gradients=config.get('gradient_clip_value', 20.0),
+#                                                          name='train_op')
+#
+#     @property
+#     def input(self):
+#         return self._input
+#
+#     @property
+#     def config(self):
+#         return self._config
+#
+#     @property
+#     def cost(self):
+#         return self.loss
+#
+#     @property
+#     def train_op(self):
+#         return self._train_op
+#
+#     @property
+#     def predict_op(self):
+#         return tf.squeeze(self.target_predictions)
+#
+#     @property
+#     def x(self):
+#         return self.rna_sequence
+#
+#     @property
+#     def y_true(self):
+#         # return self.target_scores
 
 
 def Deepbind_model(config, input, model_type):
@@ -985,12 +1055,14 @@ def load_data_rnac2009(protein_name):
 
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:
-        if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
+        if True:
+            # if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2013([protein_name])
         return np.load('../data/rnac/npz_archives/' + str(protein_name) + '.npz')
     else:
         if not (os.path.isfile('../data/rnac_2009/npz_archives/' + str(protein_name) + '.npz')):
+            # if True:
             print("[!] Processing input for " + protein_name)
             load_data_rnac2009(protein_name)
         return np.load('../data/rnac_2009/npz_archives/' + str(protein_name) + '.npz')
@@ -1082,7 +1154,8 @@ def generate_configs(num_calibrations, model_type, flag='small'):
         return generate_configs_RNN(num_calibrations, flag)
 
 def summarize(save_path='../results_final/'):
-    protein_list = ['RNCMPT00100',
+    protein_list = ['Fusip', 'HuR', 'PTB', 'RBM4', 'SF2', 'SLM2', 'U1A', 'VTS1', 'YB1',
+                    'RNCMPT00100',
                     'RNCMPT00101',
                     'RNCMPT00102',
                     'RNCMPT00103',
