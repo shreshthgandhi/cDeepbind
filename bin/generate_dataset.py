@@ -14,7 +14,7 @@ def clip_struct_compute():
     for clip_experiment_name in clip_experiments:
         clip_experiment = os.path.join('../data/GraphProt_CLIP_sequences/', clip_experiment_name)
         W = '180'
-        L = '120'
+        L = '150'
         positives_file = clip_experiment + '.train.positives.fa'
         negatives_file = clip_experiment + '.train.negatives.fa'
         print("[*] Starting RNAplfold for " + clip_experiment)
