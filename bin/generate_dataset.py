@@ -3,61 +3,67 @@ import os.path
 import subprocess
 
 from deepbind_model.utils import load_data_rnac2009
+from deepbind_model.utils import load_data_clipseq
+from deepbind_model.utils import load_data_rnac2013
 
 
 def clip_struct_compute():
     save_folder = '../data/GraphProt_CLIP_sequences/structure_annotations/'
-    clip_experiments = ['CLIPSEQ_ELAVL1', 'PARCLIP_ELAVL1', 'PARCLIP_ELAVL1A', 'PARCLIP_FUS',
+    clip_experiments = ['PARCLIP_ELAVL1', 'PARCLIP_ELAVL1A', 'PARCLIP_FUS',
                         'ICLIP_HNRNPC', 'PARCLIP_HUR', 'PARCLIP_IGF2BP123', 'PTBv1',
                         'PARCLIP_PUM2', 'PARCLIP_QKI', 'CLIPSEQ_SFRS1', 'ICLIP_TIA1']
-    clip_experiments = ['CLIPSEQ_ELAVL1']
     for clip_experiment_name in clip_experiments:
-        clip_experiment = os.path.join('../data/GraphProt_CLIP_sequences/', clip_experiment_name)
-        W = '180'
-        L = '120'
-        positives_file = clip_experiment + '.train.positives.fa'
-        negatives_file = clip_experiment + '.train.negatives.fa'
-        print("[*] Starting RNAplfold for " + clip_experiment)
-        E_process_pos = subprocess.Popen([
-                                             "../RNAplfold_scripts/RNAplfold_scripts/E_RNAplfold" + " -W " + W + " -L " + L + " -u 1 <" + positives_file + " >" + save_folder + "E_profile_pos.txt"],
-                                         shell=True)
-        H_process_pos = subprocess.Popen([
-                                             "../RNAplfold_scripts/RNAplfold_scripts/H_RNAplfold" + " -W " + W + " -L " + L + "-u 1 <" + positives_file + " >" + save_folder + "H_profile_pos.txt"],
-                                         shell=True)
-        I_process_pos = subprocess.Popen([
-            "../RNAplfold_scripts/RNAplfold_scripts/I_RNAplfold" + " -W " + W + " -L " + L + "-u 1 <" + positives_file + " >" + save_folder + "I_profile_pos.txt"],
-            shell=True)
-        M_process_pos = subprocess.Popen([
-            "../RNAplfold_scripts/RNAplfold_scripts/M_RNAplfold" + " -W " + W + " -L " + L + "-u 1  <" + positives_file + " >" + save_folder + "M_profile_pos.txt"],
-            shell=True)
-
-        E_process_neg = subprocess.Popen([
-            "../RNAplfold_scripts/RNAplfold_scripts/E_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "E_profile_neg.txt"],
-            shell=True)
-        H_process_neg = subprocess.Popen([
-            "../RNAplfold_scripts/RNAplfold_scripts/H_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "H_profile_neg.txt"],
-            shell=True)
-        I_process_neg = subprocess.Popen([
-            "../RNAplfold_scripts/RNAplfold_scripts/I_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "I_profile_neg.txt"],
-            shell=True)
-        M_process_neg = subprocess.Popen([
-            "../RNAplfold_scripts/RNAplfold_scripts/M_RNAplfold" + " -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + save_folder + "M_profile_neg.txt"],
-            shell=True)
-
-        processes = [E_process_pos, H_process_pos, I_process_pos, M_process_pos, E_process_neg, H_process_neg,
-                     I_process_neg, M_process_neg]
-        for p in processes:
-            p.wait()
-        print("[*] Finished structure profiles for " + clip_experiment)
-        subprocess.call(["python ../RNAplfold_scripts/RNAplfold_scripts/combine_letter_profiles.py " + \
-                         save_folder + "E_profile_pos.txt " + save_folder + "H_profile_pos.txt " + \
-                         save_folder + "I_profile_pos.txt " + save_folder + "M_profile_pos.txt 1 " + \
-                         clip_experiment + "_pos.txt"], shell=True)
-        subprocess.call(["python ../RNAplfold_scripts/RNAplfold_scripts/combine_letter_profiles.py " + \
-                         save_folder + "E_profile_neg.txt " + save_folder + "H_profile_neg.txt " + \
-                         save_folder + "I_profile_neg.txt ", save_folder + "M_profile_neg.txt 1 " + \
-                         clip_experiment + "_neg.txt"], shell=True)
-        print("[*] Combined letter profiles for " + clip_experiment)
+        if not (os.path.isdir(save_folder + clip_experiment_name)):
+            os.makedirs(save_folder + clip_experiment_name)
+            # clip_experiment = os.path.join('../data/GraphProt_CLIP_sequences/', clip_experiment_name)
+            # W = '180'
+            # L = '160'
+            # positives_file = clip_experiment + '.train.positives.fa'
+            # negatives_file = clip_experiment + '.train.negatives.fa'
+            # print("[*] Starting RNAplfold for " + clip_experiment)
+            # E_process_pos = subprocess.call([
+            #                                      "../RNAplfold_scripts/RNAplfold_scripts/E_RNAplfold -W " + W + " -L " + L + " -u 1 <" + positives_file + " >" + os.path.join(save_folder,clip_experiment_name,"E_profile_pos.txt")],
+            #                                  shell=True)
+            # H_process_pos = subprocess.call([
+            #                                      "../RNAplfold_scripts/RNAplfold_scripts/H_RNAplfold -W " + W + " -L " + L + "-u 1 <" + positives_file + " >" + os.path.join(save_folder,clip_experiment_name,"H_profile_pos.txt")],
+            #                                  shell=True)
+            # I_process_pos = subprocess.call([
+            #     "../RNAplfold_scripts/RNAplfold_scripts/I_RNAplfold -W " + W + " -L " + L + "-u 1 <" + positives_file + " >" +os.path.join(save_folder,clip_experiment_name,"I_profile_pos.txt")],
+            #     shell=True)
+            # M_process_pos = subprocess.call([
+            #     "../RNAplfold_scripts/RNAplfold_scripts/M_RNAplfold -W " + W + " -L " + L + "-u 1  <" + positives_file + " >" +os.path.join(save_folder,clip_experiment_name,"M_profile_pos.txt")],
+            #     shell=True)
+            #
+            # # pos_processes = [E_process_pos,H_process_pos,I_process_pos,M_process_pos]
+            # # for p in pos_processes:
+            # #     p.wait()
+            #
+            # E_process_neg = subprocess.call([
+            #     "../RNAplfold_scripts/RNAplfold_scripts/E_RNAplfold -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + os.path.join(save_folder,clip_experiment_name ,"E_profile_neg.txt")],
+            #     shell=True)
+            # H_process_neg = subprocess.call([
+            #     "../RNAplfold_scripts/RNAplfold_scripts/H_RNAplfold -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + os.path.join(save_folder,clip_experiment_name ,"H_profile_neg.txt")],
+            #     shell=True)
+            # I_process_neg = subprocess.call([
+            #     "../RNAplfold_scripts/RNAplfold_scripts/I_RNAplfold -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + os.path.join(save_folder,clip_experiment_name ,"I_profile_neg.txt")],
+            #     shell=True)
+            # M_process_neg = subprocess.call([
+            #     "../RNAplfold_scripts/RNAplfold_scripts/M_RNAplfold -W " + W + " -L " + L + "-u 1" + " <" + negatives_file + " >" + os.path.join(save_folder, clip_experiment_name,"M_profile_neg.txt")],
+            #     shell=True)
+            #
+            # # processes = [ E_process_neg, H_process_neg,I_process_neg, M_process_neg]
+            # # for p in processes:
+            # #     p.wait()
+            # print("[*] Finished structure profiles for " + clip_experiment)
+            # # subprocess.call(["python ../RNAplfold_scripts/RNAplfold_scripts/combine_letter_profiles.py " + \
+            # #                  save_folder + "E_profile_pos.txt " + save_folder + "H_profile_pos.txt " + \
+            # #                  save_folder + "I_profile_pos.txt " + save_folder + "M_profile_pos.txt 1 " + \
+            # #                  clip_experiment + "_pos.txt"], shell=True)
+            # # subprocess.call(["python ../RNAplfold_scripts/RNAplfold_scripts/combine_letter_profiles.py " + \
+            # #                  save_folder + "E_profile_neg.txt " + save_folder + "H_profile_neg.txt " + \
+            # #                  save_folder + "I_profile_neg.txt ", save_folder + "M_profile_neg.txt 1 " + \
+            # #                  clip_experiment + "_neg.txt"], shell=True)
+            # print("[*] Combined letter profiles for " + clip_experiment)
 
 
 def rnac_2009_struct_compute():
@@ -83,8 +89,8 @@ def rnac_2009_struct_compute():
     rnac_experiment_list = [file.replace('.txt', '.fasta') for file in seq_files]
     for rnac_experiment in rnac_experiment_list:
         rnac_fasta_file = os.path.join(fasta_folder, rnac_experiment)
-        W = '24'
-        L = '16'
+        W = '29'
+        L = '29'
         print("[*] Starting secondary structure prediction for " + rnac_experiment)
         E_process = subprocess.Popen([
                                          '../RNAplfold_scripts/RNAplfold_scripts/E_RNAplfold -W ' + W + ' -L ' + L + ' -u 1 <' + rnac_fasta_file + ' >' + os.path.join(
@@ -116,6 +122,9 @@ def main(dataset_type, protein):
         rnac_2009_struct_compute()
     elif dataset_type == 'RNAC_2009_numpy':
         load_data_rnac2009(protein_name=protein)
+    elif dataset_type == 'CLIP_numpy':
+        # load_data_clipseq(protein)
+        load_data_rnac2013(["RNCMPT00005"])
 
 
 if __name__ == "__main__":

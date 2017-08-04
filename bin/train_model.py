@@ -1,6 +1,7 @@
 import argparse
 import os.path
 from datetime import datetime
+from time import time
 
 import numpy as np
 import tensorflow as tf
@@ -10,7 +11,8 @@ import deepbind_model.calibrate_model as calib
 import deepbind_model.utils as utils
 
 
-def main(target_protein, model_size_flag, model_testing_list, num_calibrations, recalibrate, num_final_runs):
+def main(target_protein, model_size_flag, model_testing_list, num_calibrations, recalibrate, num_final_runs,
+         train_epochs):
     traindir = {}
     for model_type in model_testing_list:
         model_dir = os.path.join('../models/', target_protein, model_type, model_size_flag,
@@ -34,14 +36,9 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations, 
                                                                   num_calibrations=num_calibrations,
                                                                   model_type=model_type,
                                                                   flag='small')
-        best_config[model_type]['epochs'] = 15  # Change this to be more general
+        best_config[model_type]['epochs'] = train_epochs
 
-    ##### Encapsulate in single function
-    target_file = '../data/rnac/npz_archives/' + str(target_protein) + '.npz'
-    if not (os.path.isfile(target_file)):
-        utils.load_data(target_id_list=[target_protein])
-    inf = np.load(target_file)
-    ####
+    inf = utils.load_data(target_protein)
     models = []
     inputs = []
     input_data = {}
@@ -89,11 +86,15 @@ if __name__ == "__main__":
     config = yaml.load(open(args.configuration, 'r'))
     if args.gpus is not None:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, args.gpus))
+    start_time = time()
     if not (config.get('summary_only', False)):
         for protein_id in args.protein:
             main(target_protein=protein_id, model_size_flag=config.get('model_scale', 'large'),
                  model_testing_list=config.get('model_testing_list', ['RNN_struct']),
                  num_calibrations=config.get('num_calibrations', 5),
                  recalibrate=config.get('recalibrate', False),
-                 num_final_runs=config.get('num_final_runs', 3))
+                 num_final_runs=config.get('num_final_runs', 3),
+                 train_epochs=config.get('train_epochs', 15))
+    average_time = (time() - start_time) / len(args.protein)
+    print("Finished process in %.4f seconds per protein" % (average_time))
     utils.summarize()

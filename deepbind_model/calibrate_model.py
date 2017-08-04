@@ -1,5 +1,3 @@
-import os.path
-
 import numpy as np
 import tensorflow as tf
 
@@ -9,11 +7,7 @@ import deepbind_model.utils as utils
 def calibrate_model(target_protein, num_calibrations,
                     model_type, flag):
     print("[*] Performing %d calibration trials for %s %s model" % (num_calibrations, target_protein, model_type))
-
-    target_file = '../data/rnac/npz_archives/' + str(target_protein) + '.npz'
-    if not (os.path.isfile(target_file)):
-        utils.load_data(target_id_list=[target_protein])
-    inf = np.load(target_file)
+    inf = utils.load_data(target_protein)
     input_configuration = utils.input_config(flag)
     configs = utils.generate_configs(num_calibrations, model_type, flag)
 
