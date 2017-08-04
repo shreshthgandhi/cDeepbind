@@ -3,7 +3,6 @@ import os.path
 import subprocess
 
 from deepbind_model.utils import load_data_rnac2009
-from deepbind_model.utils import load_data_clipseq
 from deepbind_model.utils import load_data_rnac2013
 
 

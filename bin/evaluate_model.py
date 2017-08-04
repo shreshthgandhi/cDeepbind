@@ -1,7 +1,6 @@
 import argparse
 import os.path
 
-import numpy as np
 import tensorflow as tf
 import yaml
 
@@ -26,9 +25,11 @@ def main(target_protein, model_type):
             # scores = utils.evaluate_model_parallel(sess, config, [model], input_data)
             # utils.compute_gradient(sess, config, model, input_data)
             # print(scores)
-            (cost_train, cost_test,training_pearson, test_pearson,training_scores,test_scores)  = utils.run_epoch_parallel(sess, [model], input_data,config,epoch=1,train=False,verbose=False,testing=True,scores=True)
-            new_pearson_test = test_pearson[0,0]
-            new_pearson_train = training_pearson[0,0]
+            (cost_train, cost_test, training_pearson, test_pearson, training_scores,
+             test_scores) = utils.run_epoch_parallel(sess, [model], input_data, config, epoch=1, train=False,
+                                                     verbose=False, testing=True, scores=True)
+            new_pearson_test = test_pearson[0, 0]
+            new_pearson_train = training_pearson[0, 0]
             new_cost_train = cost_train[0]
             new_cost_test = cost_test[0]
             # inf = np.load('../results_final/'+target_protein+'_'+model_type+'_large.npz')
@@ -37,7 +38,7 @@ def main(target_protein, model_type):
             #     keywords[key] = inf[key]
             # keywords['cost'] = new_cost_test
             # keywords['pearson'] = new_pearson_test
-            print("True pearson for %s is %f"%(target_protein,test_pearson[0,0]))
+            print("True pearson for %s is %f" % (target_protein, test_pearson[0, 0]))
 
 
 

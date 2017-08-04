@@ -1,30 +1,24 @@
 import os.path
+from math import ceil as ceil
 
 import numpy as np
 import scipy.stats as stats
 import tensorflow as tf
-from math import ceil as ceil
 from sklearn.model_selection import KFold
 
-class Deepbind_clip_input(object):
+
+class Deepbind_clip_input_struct(object):
     def __init__(self, config, inf):
         (data_one_hot, labels,
          structures,
-         total_cases,seq_length) = (inf["data_one_hot"], inf["labels"],
-                        inf["structures"], inf["total_cases"],
-                        inf["seq_len"])
-        # labels_training = (labels_training - np.mean(labels_training)) / np.sqrt(np.var(labels_training))
-        # labels_test = (labels_test - np.mean(labels_test)) / np.sqrt(np.var(labels_test))
+         total_cases, seq_length) = (inf["data_one_hot"], inf["labels"],
+                                     inf["structures"], inf["total_cases"],
+                                     inf["seq_len"])
         self.structures = np.transpose(structures, [0, 2, 1])
-        self.data = np.append(data_one_hot,self.structures, axis=2)
-        self.seq_len
-        self.test_struct = np.transpose(structures_test[0:self.test_cases], [0, 2, 1])
-
-        self.training_data = np.append(self.training_data, self.training_struct, axis=2)
-        self.test_data = np.append(self.test_data, self.test_struct, axis=2)
-        self.seq_length = int(seq_length)
-        self.training_cases = self.training_data.shape[0]
-        self.test_cases = self.test_data.shape[0]
+        self.data = np.append(data_one_hot, self.structures, axis=2)
+        self.seq_len = seq_length
+        self.total_cases = self.data.shape[0]
+        self.labels = labels
 
 class Deepbind_no_struct_input(object):
     """The deepbind_CNN model input without structure"""
@@ -397,19 +391,20 @@ class Deepbind_RNN_struct_model(object):
         b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name='b_conv2')
         h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
                                strides=[1, 1, 1, 1], padding='SAME')
-        n_hidden =10
-        W_hidden = tf.Variable(tf.random_normal([1,n_hidden]),name='W_hidden')
+        n_hidden = 10
+        W_hidden = tf.Variable(tf.random_normal([1, n_hidden]), name='W_hidden')
         b_hidden = tf.Variable(tf.constant(0.001, shape=[n_hidden]), name='b_hidden')
-        W_out = tf.Variable(tf.random_normal([n_hidden,1]), name='W_hidden')
+        W_out = tf.Variable(tf.random_normal([n_hidden, 1]), name='W_hidden')
         b_out = tf.Variable(tf.constant(0.001, shape=[1]), name='b_hidden')
 
-        h_input = tf.reshape(tf.squeeze(h_conv2, axis=[3]),[-1,1])
+        h_input = tf.reshape(tf.squeeze(h_conv2, axis=[3]), [-1, 1])
         h_input = tf.matmul(h_input, W_hidden)
-        h_input = tf.reshape(h_input,[-1,seq_length,n_hidden])
+        h_input = tf.reshape(h_input, [-1, seq_length, n_hidden])
         # h_input = tf.unstack(value=h_input,axis=1)
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
         outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32)
-        h_final = tf.squeeze(tf.matmul(tf.squeeze(tf.slice(outputs,[0,tf.shape(outputs)[1]-1,0],[-1,1,-1])),W_out)+b_out)
+        h_final = tf.squeeze(
+            tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1])), W_out) + b_out)
 
         cost_batch = tf.square(h_final - y_true)
         self._cost = cost = tf.reduce_mean(cost_batch)
@@ -708,7 +703,9 @@ def Deepbind_model(config, input, model_type):
     elif model_type == 'RNN':
         return Deepbind_RNN_model(config, input)
 
-def run_epoch_parallel(session, models, input_data, config, epoch, train=False, verbose=False, testing=False, scores=False):
+
+def run_epoch_parallel(session, models, input_data, config, epoch, train=False, verbose=False, testing=False,
+                       scores=False):
     if isinstance(input_data,list):
         Nbatch_train = int(ceil(input_data[0].training_cases * 1.0 / config['minib']))
         Nbatch_test = int(ceil(input_data[0].test_cases * 1.0 / config['minib']))
@@ -725,7 +722,7 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
     minib = config['minib']
     num_models = len(models)
     cost_temp = np.zeros([num_models])
-    pearson_train = np.zeros([num_models,2])
+    pearson_train = np.zeros([num_models, 2])
 
     for step in range(Nbatch_train):
         fetches = {}
@@ -738,7 +735,7 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
                 if train:
                     fetches["eval_op" + str(i)] = model.train_op
 
-                fetches["predictions"+ str(i)] = model.predict_op
+                fetches["predictions" + str(i)] = model.predict_op
         else:
             for i, model in enumerate(models):
                 feed_dict[model.x] = input_data.training_data[(minib * step): (minib * (step + 1)), :, :]
@@ -746,20 +743,20 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
                 fetches["cost"+str(i)] = model.cost
                 if train:
                     fetches["eval_op" +str(i)] = model.train_op
-                fetches["predictions" +str(i)] = model.predict_op
+                fetches["predictions" + str(i)] = model.predict_op
         vals = session.run(fetches, feed_dict)
         for j in range(num_models):
             cost_temp[j] += vals["cost"+str(j)]
             training_scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
     cost_train = cost_temp / Nbatch_train
     for j in range(num_models):
-        if isinstance(input_data,list):
+        if isinstance(input_data, list):
             pearson_train[j, :] = stats.pearsonr(input_data[j].training_labels, training_scores[j, :])
         else:
             pearson_train[j, :] = stats.pearsonr(input_data.training_labels, training_scores[j, :])
     cost_temp = np.zeros([num_models])
     if testing or scores:
-        pearson_test = np.zeros([num_models,2])
+        pearson_test = np.zeros([num_models, 2])
         for step in range(Nbatch_test):
             feed_dict = {}
             fetches = {}
@@ -779,7 +776,7 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
             vals = session.run(fetches, feed_dict)
 
             for j in range(num_models):
-                cost_temp[j] += vals["cost"+str(j)]
+                cost_temp[j] += vals["cost" + str(j)]
                 test_scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
                 # if isinstance(input_data,list):
                 #     mbatchY_test = input_data[i].test_labels[(minib * step): (minib * (step + 1))]
@@ -787,20 +784,22 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
                 #     mbatchY_test = input_data.test_labels[(minib * step): (minib * (step + 1))]
                 # cost_test[j] += vals["cost"+str(j)]
                 # pearson_test[j] += stats.pearsonr(mbatchY_test, vals["predictions"+str(j)])[0]
-        cost_test = cost_temp/Nbatch_test
+        cost_test = cost_temp / Nbatch_test
         for j in range(num_models):
-            if isinstance(input_data,list):
+            if isinstance(input_data, list):
                 pearson_test[j, :] = stats.pearsonr(input_data[j].test_labels, test_scores[j, :])
             else:
-                pearson_test[j,:] = stats.pearsonr(input_data.test_labels, test_scores[j,:])
+                pearson_test[j, :] = stats.pearsonr(input_data.test_labels, test_scores[j, :])
         if verbose:
             best_model = np.argmin(cost_train)
-            print ("Epoch:%04d, Train cost(min)=%0.4f, Train pearson=%0.4f, Test cost(min)=%0.4f, Test Pearson(max)=%0.4f" %
-                   (epoch + 1, cost_train[best_model], pearson_train[best_model][0], cost_test[best_model], pearson_test[best_model][0]))
-            print(["%.4f"%  p for p in pearson_test[:,0]])
+            print (
+            "Epoch:%04d, Train cost(min)=%0.4f, Train pearson=%0.4f, Test cost(min)=%0.4f, Test Pearson(max)=%0.4f" %
+            (epoch + 1, cost_train[best_model], pearson_train[best_model][0], cost_test[best_model],
+             pearson_test[best_model][0]))
+            print(["%.4f" % p for p in pearson_test[:, 0]])
         if scores:
-            return (cost_train,cost_test,pearson_train,pearson_test,training_scores,test_scores)
-        return (cost_train, cost_test, pearson_test[:,0])
+            return (cost_train, cost_test, pearson_train, pearson_test, training_scores, test_scores)
+        return (cost_train, cost_test, pearson_test[:, 0])
     return cost_train
 
 def train_model_parallel(session, config, models, input_data, early_stop = False):
@@ -870,15 +869,16 @@ def evaluate_model_parallel(session, config, models, input_data):
         run_epoch_parallel(session, models, input_data, config, 0, train=False, verbose=True, testing=True)
     return (cost_test, pearson_test)
 
+
 def score_model_parallel(session, config, models, input_data):
-    if isinstance(input_data,list):
-        Nbatch_train = int(ceil(input_data[0].training_cases*1.0 / config['minib']))
-        Nbatch_test = int(ceil(input_data[0].test_cases*1.0 / config['minib']))
+    if isinstance(input_data, list):
+        Nbatch_train = int(ceil(input_data[0].training_cases * 1.0 / config['minib']))
+        Nbatch_test = int(ceil(input_data[0].test_cases * 1.0 / config['minib']))
         training_scores = np.zeros([len(models), input_data[0].training_cases])
         test_scores = np.zeros([len(models), input_data[0].test_cases])
     else:
-        Nbatch_train = int(ceil(input_data.training_cases*1.0 / config['minib']))
-        Nbatch_test = int(ceil(input_data.test_cases*1.0 / config['minib']))
+        Nbatch_train = int(ceil(input_data.training_cases * 1.0 / config['minib']))
+        Nbatch_test = int(ceil(input_data.test_cases * 1.0 / config['minib']))
         training_scores = np.zeros([len(models), input_data.training_cases])
         test_scores = np.zeros([len(models), input_data.test_cases])
     minib = config['minib']
@@ -887,8 +887,8 @@ def score_model_parallel(session, config, models, input_data):
     for step in range(Nbatch_train):
         fetches = {}
         feed_dict = {}
-        if isinstance(input_data,list):
-            for i,(model,input) in enumerate(zip(models,input_data)):
+        if isinstance(input_data, list):
+            for i, (model, input) in enumerate(zip(models, input_data)):
                 feed_dict[model.x] = input.training_data[(minib * step): (minib * (step + 1)), :, :]
                 feed_dict[model.y_true] = input.training_labels[(minib * step): (minib * (step + 1))]
                 fetches["predictions" + str(i)] = model.predict_op
@@ -901,7 +901,7 @@ def score_model_parallel(session, config, models, input_data):
 
         vals = session.run(fetches, feed_dict)
         for j in range(num_models):
-            training_scores[j,(minib * step): (minib * (step + 1))] = vals['predictions'+str(j)]
+            training_scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
 
     for step in range(Nbatch_test):
         feed_dict = {}
@@ -916,15 +916,15 @@ def score_model_parallel(session, config, models, input_data):
             for i, model in enumerate(models):
                 feed_dict[model.x] = input_data.test_data[(minib * step): (minib * (step + 1)), :, :]
                 feed_dict[model.y_true] = input_data.test_labels[(minib * step): (minib * (step + 1))]
-                fetches["predictions"+str(i)] = model.predict_op
+                fetches["predictions" + str(i)] = model.predict_op
         vals = session.run(fetches, feed_dict)
 
         for j in range(num_models):
             test_scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
     for j in range(num_models):
-        pearson_test = stats.pearsonr(input_data.test_labels,test_scores[j,:])
-        pearson_training = stats.pearsonr(input_data.training_labels, training_scores[j,:])
-    return (training_scores,test_scores, pearson_training, pearson_test)
+        pearson_test = stats.pearsonr(input_data.test_labels, test_scores[j, :])
+        pearson_training = stats.pearsonr(input_data.training_labels, training_scores[j, :])
+    return (training_scores, test_scores, pearson_training, pearson_test)
 
 
 
@@ -1195,7 +1195,7 @@ def load_data_rnac2009(protein_name):
             training_structs.append(probs)
     with open(os.path.join(structure_folder, protein_name + '_data_full_B_profile'), 'r') as test_struct_file:
         for line in test_struct_file:
-            probs = np.ones([num_struct_classes, seq_len_test]) * (1.0/ num_struct_classes)
+            probs = np.ones([num_struct_classes, seq_len_test]) * (1.0 / num_struct_classes)
             for i in range(5):
                 values_line = test_struct_file.next().strip()
                 values = np.array(map(np.float32, values_line.split('\t')))
@@ -1250,24 +1250,25 @@ def load_data_rnac2009(protein_name):
              seq_length=max(seq_len_train, seq_len_test))
     print("[*] Finished loading data for " + protein_name)
 
+
 def load_data_clipseq(protein_name):
     data_folder = '../data/GraphProt_CLIP_sequences'
-    structure_folder = '../data/GraphProt_CLIP_sequences/structure_annotations/'+protein_name
+    structure_folder = '../data/GraphProt_CLIP_sequences/structure_annotations/' + protein_name
     structs = []
     num_struct_classes = 5
     seqs = []
     labels = []
-    with open(os.path.join(data_folder, protein_name+'.train.positives.fa'),'r') as pos_file:
+    with open(os.path.join(data_folder, protein_name + '.train.positives.fa'), 'r') as pos_file:
         for line in pos_file:
             seqs.append(pos_file.next().strip())
             labels.append(1.0)
-    with open(os.path.join(data_folder, protein_name+'.train.negatives.fa'),'r') as neg_file:
+    with open(os.path.join(data_folder, protein_name + '.train.negatives.fa'), 'r') as neg_file:
         for line in neg_file:
             seqs.append(neg_file.next().strip())
             labels.append(0.0)
     seq_len = max([len(seq) for seq in seqs])
 
-    with open(os.path.join(structure_folder,protein_name+'.train.positives_combined'),'r') as pos_struct_file:
+    with open(os.path.join(structure_folder, protein_name + '.train.positives_combined'), 'r') as pos_struct_file:
         for line in pos_struct_file:
             probs = np.ones([num_struct_classes, seq_len]) * (1 / num_struct_classes)
             for i in range(5):
@@ -1275,7 +1276,7 @@ def load_data_clipseq(protein_name):
                 values = np.array(map(np.float32, values_line.split('\t')))
                 probs[i, 0:values.shape[0]] = values
             structs.append(probs)
-    with open(os.path.join(structure_folder,protein_name+'.train.negatives_combined'),'r') as neg_struct_file:
+    with open(os.path.join(structure_folder, protein_name + '.train.negatives_combined'), 'r') as neg_struct_file:
         for line in neg_struct_file:
             probs = np.ones([num_struct_classes, seq_len]) * (1 / num_struct_classes)
             for i in range(5):
@@ -1289,31 +1290,31 @@ def load_data_clipseq(protein_name):
         for j, nuc in enumerate(case):
             if nuc == 'A' or nuc == 'a':
                 seq_enc[i, j] = np.array([1, 0, 0, 0])
-            elif nuc == 'G' or nuc =='g':
+            elif nuc == 'G' or nuc == 'g':
                 seq_enc[i, j] = np.array([0, 1, 0, 0])
-            elif nuc == 'C' or nuc=='c':
+            elif nuc == 'C' or nuc == 'c':
                 seq_enc[i, j] = np.array([0, 0, 1, 0])
-            elif nuc == 'U' or nuc=='u':
+            elif nuc == 'U' or nuc == 'u':
                 seq_enc[i, j] = np.array([0, 0, 0, 1])
-            elif nuc == 'T' or nuc=='t':
+            elif nuc == 'T' or nuc == 't':
                 seq_enc[i, j] = np.array([0, 0, 0, 1])
     seq_enc -= 0.25
-    data_one_hot = np.array(seq_enc,np.float32)
-    labels_array = np.array(labels,np.float32)
+    data_one_hot = np.array(seq_enc, np.float32)
+    labels_array = np.array(labels, np.float32)
     total_cases = data_one_hot.shape[0]
-    structures = np.array(structs,np.float32)
-    save_target = os.path.join('../data/GraphProt_CLIP_sequences/npz_archives',protein_name+'.npz')
+    structures = np.array(structs, np.float32)
+    save_target = os.path.join('../data/GraphProt_CLIP_sequences/npz_archives', protein_name + '.npz')
     np.savez(save_target, data_one_hot=data_one_hot,
-             labels = labels_array,
+             labels=labels_array,
              seq_length=seq_len,
              structures=structures,
              total_cases=total_cases)
-    print("[*] Finished loading data for "+protein_name)
+    print("[*] Finished loading data for " + protein_name)
 
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:
-        if True:
-        # if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
+        # if True:
+        if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2013([protein_name])
         return np.load('../data/rnac/npz_archives/' + str(protein_name) + '.npz')
