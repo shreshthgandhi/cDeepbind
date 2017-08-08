@@ -88,13 +88,15 @@ if __name__ == "__main__":
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, args.gpus))
     start_time = time()
     if not (config.get('summary_only', False)):
-        for protein_id in args.protein:
+        for i, protein_id in enumerate(args.protein):
             main(target_protein=protein_id, model_size_flag=config.get('model_scale', 'large'),
                  model_testing_list=config.get('model_testing_list', ['RNN_struct']),
                  num_calibrations=config.get('num_calibrations', 5),
                  recalibrate=config.get('recalibrate', False),
                  num_final_runs=config.get('num_final_runs', 3),
                  train_epochs=config.get('train_epochs', 15))
+            elapsed_time = (time() - start_time)
+            print("Time left is"+ str(elapsed_time*len(args.protein)*1.0/(i+1)))
     average_time = (time() - start_time) / len(args.protein)
     print("Finished process in %.4f seconds per protein" % (average_time))
     utils.summarize()
