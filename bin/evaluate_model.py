@@ -52,7 +52,6 @@ if __name__ == "__main__":
     parser.add_argument('--gpus', default=None, type=int, nargs='+')
     parser.add_argument('--protein', default=None, nargs='+')
     parser.add_argument('--model_type', default=None)
-    parser.add_argument('--evaluation_type', default='RNAC_2013')
 
     args = parser.parse_args()
     if args.gpus is not None:

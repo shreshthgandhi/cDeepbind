@@ -6,6 +6,7 @@ import scipy.stats as stats
 import tensorflow as tf
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import KFold
+from sklearn.metrics import roc_auc_score
 
 
 class Deepbind_clip_input_struct(object):
@@ -702,6 +703,41 @@ def Deepbind_model(config, input, model_type):
         return Deepbind_RNN_struct_model(config, input)
     elif model_type == 'RNN':
         return Deepbind_RNN_model(config, input)
+
+def run_clip_epoch_parallel(session, models, input_data, config):
+    if isinstance(input_data,list):
+        Nbatch = int(ceil(input_data[0].total_cases * 1.0 / config['minib']))
+        scores = np.zeros([len(models), input_data[0].total_cases])
+    else:
+        Nbatch = int(ceil(input_data.total_cases * 1.0 / config['minib']))
+        scores = np.zeros([len(models), input_data.total_cases])
+    minib = config['minib']
+    num_models = len(models)
+    auc = np.zeros([num_models])
+    for step in range(Nbatch):
+        fetches = {}
+        feed_dict = {}
+        if isinstance(input_data,list):
+            for i,(model,input) in enumerate(zip(models,input_data)):
+                feed_dict[model.x] = input.data[(minib * step): (minib * (step + 1)), :, :]
+                feed_dict[model.y_true] = input.labels[(minib * step): (minib * (step + 1))]
+                fetches["predictions" + str(i)] = model.predict_op
+        else:
+            for i, model in enumerate(models):
+                feed_dict[model.x] = input_data.data[(minib * step): (minib * (step + 1)), :, :]
+                feed_dict[model.y_true] = input_data.labels[(minib * step): (minib * (step + 1))]
+                fetches["predictions" + str(i)] = model.predict_op
+        vals = session.run(fetches, feed_dict)
+        for j in range(num_models):
+            scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
+    for j in range(num_models):
+        if isinstance(input_data, list):
+            auc[j, :] = roc_auc_score(input_data[j].labels, scores[j, :])
+        else:
+            auc[j, :] = roc_auc_score(input_data.labels, scores[j, :])
+    return auc
+
+
 
 
 def run_clip_epoch_parallel(session, models, input_data, config):
