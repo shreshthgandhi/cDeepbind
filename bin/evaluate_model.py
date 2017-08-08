@@ -8,7 +8,7 @@ import yaml
 import deepbind_model.utils as utils
 
 
-def main(target_protein, model_type, evaluation_type):
+def main(target_protein, model_type, evaluation_type, CLIPSEQ_experiment=None):
     config = utils.load_calibration(target_protein, model_type, 'small', '../calibrations')
     if not (config):
         print("[!] No trained model to evaluate")
@@ -20,7 +20,7 @@ def main(target_protein, model_type, evaluation_type):
     # inf = utils.load_data(target_protein)
 
     if evaluation_type == 'CLIPSEQ':
-        inf = np.load('../data/GraphProt_CLIP_sequences/npz_archives/CLIPSEQ_ELAVL1.npz')
+        inf = np.load('../data/GraphProt_CLIP_sequences/npz_archives/' + CLIPSEQ_experiment + '.npz')
         input_data = utils.Deepbind_clip_input_struct(inf)
     else:
         inf = utils.load_data(target_protein)
@@ -36,6 +36,13 @@ def main(target_protein, model_type, evaluation_type):
             if evaluation_type == 'CLIPSEQ':
                 auc = utils.run_clip_epoch_parallel(sess, [model], input_data, config)
                 print(auc)
+                result_dict = {'auc': auc}
+                save_dir = '../results_final/'
+
+                yaml.dump(result_dict,
+                          open(os.path.join(save_dir,
+                                            target_protein + '_' + CLIPSEQ_experiment + '_' + model_type + '_' + '.yml'),
+                               'w'))
             else:
 
                 (cost_train, cost_test, training_pearson, test_pearson, training_scores,
@@ -52,6 +59,8 @@ if __name__ == "__main__":
     parser.add_argument('--gpus', default=None, type=int, nargs='+')
     parser.add_argument('--protein', default=None, nargs='+')
     parser.add_argument('--model_type', default=None)
+    parser.add_argument('--evaluation_type', default='RNAC_2013')
+    parser.add_argument('--CLIPSEQ_experiment')
 
     args = parser.parse_args()
     if args.gpus is not None:
@@ -59,4 +68,5 @@ if __name__ == "__main__":
     for protein_id in args.protein:
         main(target_protein=protein_id,
              model_type=args.model_type,
-             evaluation_type=args.evaluation_type)
+             evaluation_type=args.evaluation_type,
+             CLIPSEQ_experiment=args.CLIPSEQ_experiment)

@@ -6,7 +6,6 @@ import scipy.stats as stats
 import tensorflow as tf
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import KFold
-from sklearn.metrics import roc_auc_score
 
 
 class Deepbind_clip_input_struct(object):
@@ -751,16 +750,19 @@ def run_clip_epoch_parallel(session, models, input_data, config):
     num_models = len(models)
     auc = np.zeros([num_models])
     window_size = 40
+    stride = 1
     for step in range(Nbatch):
         fetches = {}
         feed_dict = {}
         if isinstance(input_data, list):
             for i, (model, input) in enumerate(zip(models, input_data)):
                 minib_seq = input.data[(minib * step): (minib * (step + 1)), :, :]
-                n_batch_seq = int(ceil(minib_seq.shape[1] * 1.0 / window_size))
-                batch_scores = np.zeros([len(models), minib, n_batch_seq])
-                for seq_step in range(n_batch_seq):
-                    input_sequence = minib_seq[:, (window_size * seq_step): (window_size * (seq_step + 1)), :]
+                # n_batch_seq = int(ceil(minib_seq.shape[1] * 1.0 / window_size))
+                n_batch_seq = (minib_seq.shape[1] - window_size) / stride
+                batch_scores = np.zeros([len(models), minib_seq.shape[0], n_batch_seq])
+                for seq_step in range(0, n_batch_seq, step=stride):
+                    # input_sequence = minib_seq[:, (window_size * seq_step): (window_size * (seq_step + 1)), :]
+                    input_sequence = minib_seq[:, seq_step:seq_step + window_size, :]
                     feed_dict[model.x] = input_sequence
                     fetches["predictions" + str(i)] = model.predict_op
                     vals = session.run(fetches, feed_dict)
@@ -772,10 +774,12 @@ def run_clip_epoch_parallel(session, models, input_data, config):
         else:
             for i, model in enumerate(models):
                 minib_seq = input_data.data[(minib * step): (minib * (step + 1)), :, :]
-                n_batch_seq = int(ceil(minib_seq.shape[1] * 1.0 / window_size))
+                # n_batch_seq = int(ceil(minib_seq.shape[1] * 1.0 / window_size))
+                n_batch_seq = (minib_seq.shape[1] - window_size) / stride
                 batch_scores = np.zeros([len(models), minib_seq.shape[0], n_batch_seq])
                 for seq_step in range(n_batch_seq):
-                    input_sequence = minib_seq[:, (window_size * seq_step): (window_size * (seq_step + 1)), :]
+                    # input_sequence = minib_seq[:, (window_size * seq_step): (window_size * (seq_step + 1)), :]
+                    input_sequence = minib_seq[:, seq_step:seq_step + window_size, :]
                     feed_dict[model.x] = input_sequence
                     fetches["predictions" + str(i)] = model.predict_op
                     vals = session.run(fetches, feed_dict)
@@ -1351,17 +1355,17 @@ def load_data_clipseq(protein_name):
     num_struct_classes = 5
     seqs = []
     labels = []
-    with open(os.path.join(data_folder, protein_name + '.train.positives.fa'), 'r') as pos_file:
+    with open(os.path.join(data_folder, protein_name + '.ls.positives.fa'), 'r') as pos_file:
         for line in pos_file:
             seqs.append(pos_file.next().strip())
             labels.append(1.0)
-    with open(os.path.join(data_folder, protein_name + '.train.negatives.fa'), 'r') as neg_file:
+    with open(os.path.join(data_folder, protein_name + '.ls.negatives.fa'), 'r') as neg_file:
         for line in neg_file:
             seqs.append(neg_file.next().strip())
             labels.append(0.0)
     seq_len = max([len(seq) for seq in seqs])
 
-    with open(os.path.join(structure_folder, protein_name + '.train.positives_combined'), 'r') as pos_struct_file:
+    with open(os.path.join(structure_folder, protein_name + '.ls.positives_combined'), 'r') as pos_struct_file:
         for line in pos_struct_file:
             probs = np.ones([num_struct_classes, seq_len]) * (1 / num_struct_classes)
             for i in range(5):
@@ -1369,7 +1373,7 @@ def load_data_clipseq(protein_name):
                 values = np.array(map(np.float32, values_line.split('\t')))
                 probs[i, 0:values.shape[0]] = values
             structs.append(probs)
-    with open(os.path.join(structure_folder, protein_name + '.train.negatives_combined'), 'r') as neg_struct_file:
+    with open(os.path.join(structure_folder, protein_name + '.ls.negatives_combined'), 'r') as neg_struct_file:
         for line in neg_struct_file:
             probs = np.ones([num_struct_classes, seq_len]) * (1 / num_struct_classes)
             for i in range(5):
