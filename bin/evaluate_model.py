@@ -35,7 +35,7 @@ def main(target_protein, model_type, evaluation_type, CLIPSEQ_experiment=None):
                           os.path.join(model_dir, target_protein + '_best_model.ckpt'))
             if evaluation_type == 'CLIPSEQ':
                 auc = utils.run_clip_epoch_parallel(sess, [model], input_data, config)
-                print(auc)
+                print(target_protein, CLIPSEQ_experiment, auc)
                 result_dict = {'auc': auc}
                 save_dir = '../results_final/'
 
@@ -45,6 +45,7 @@ def main(target_protein, model_type, evaluation_type, CLIPSEQ_experiment=None):
                                'w'))
             else:
 
+                # grad_test, grad_train = utils.compute_gradient(sess,model, input_data,config)
                 (cost_train, cost_test, training_pearson, test_pearson, training_scores,
                  test_scores) = utils.run_epoch_parallel(sess, [model], input_data, config, epoch=1, train=False,
                                                          verbose=False, testing=True, scores=True)
@@ -60,13 +61,19 @@ if __name__ == "__main__":
     parser.add_argument('--protein', default=None, nargs='+')
     parser.add_argument('--model_type', default=None)
     parser.add_argument('--evaluation_type', default='RNAC_2013')
-    parser.add_argument('--CLIPSEQ_experiment')
-
+    parser.add_argument('--CLIPSEQ_experiment', default=None, nargs='+')
     args = parser.parse_args()
     if args.gpus is not None:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, args.gpus))
-    for protein_id in args.protein:
-        main(target_protein=protein_id,
-             model_type=args.model_type,
-             evaluation_type=args.evaluation_type,
-             CLIPSEQ_experiment=args.CLIPSEQ_experiment)
+    if args.CLIPSEQ_experiment:
+        for protein_id, clip_exp in zip(args.protein, args.CLIPSEQ_experiment):
+            main(target_protein=protein_id,
+                 model_type=args.model_type,
+                 evaluation_type=args.evaluation_type,
+                 CLIPSEQ_experiment=clip_exp)
+    else:
+        for protein_id in args.protein:
+            main(target_protein=protein_id,
+                 model_type=args.model_type,
+                 evaluation_type=args.evaluation_type,
+                 CLIPSEQ_experiment=args.CLIPSEQ_experiment)

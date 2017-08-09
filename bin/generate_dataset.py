@@ -2,9 +2,8 @@ import argparse
 import os.path
 import subprocess
 
-from deepbind_model.utils import load_data_rnac2009
-from deepbind_model.utils import load_data_rnac2013
 from deepbind_model.utils import load_data_clipseq
+from deepbind_model.utils import load_data_rnac2009
 
 
 def clip_struct_compute():
@@ -129,7 +128,8 @@ def main(dataset_type, protein):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_type', default=None)
-    parser.add_argument('--protein', default='SF2')
+    parser.add_argument('--protein', nargs='+', default=None)
     args = parser.parse_args()
-    main(dataset_type=args.dataset_type,
-         protein=args.protein)
+    for protein in args.protein:
+        main(dataset_type=args.dataset_type,
+             protein=protein)

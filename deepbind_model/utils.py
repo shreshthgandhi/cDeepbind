@@ -482,12 +482,15 @@ class Deepbind_RNN_struct_model(object):
         b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name='b_conv2')
         h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
                                strides=[1, 1, 1, 1], padding='SAME')
-        n_hidden = config.get('lstm_size', 20)
+        n_hidden = config.get('lstm_size', 10)
         W_out = tf.Variable(tf.random_normal([n_hidden, 1]), name='W_hidden')
         b_out = tf.Variable(tf.constant(0.001, shape=[1]), name='b_hidden')
         h_input = tf.squeeze(tf.nn.relu(h_conv2 + b_conv2), axis=[3], name='lstm_input')
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
         outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32)
+        # seq_current = tf.shape(outputs)[1]
+        # lstm_output_layer = tf.reshape((tf.matmul(tf.reshape(outputs,[-1,n_hidden]),W_out)+b_out),[-1,seq_current,1])
+        # h_final = tf.reduce_max(lstm_output_layer, axis=[1,2])
         h_final = tf.squeeze(
             tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1])), W_out) + b_out)
 
@@ -498,6 +501,10 @@ class Deepbind_RNN_struct_model(object):
 
         self._train_op = optimizer.minimize(cost + norm_w * lam_model)
         self._predict_op = h_final
+        self.lstm_output_layer = outputs
+        self.lstm_state_layer = state
+        self.lstm_scalar_weight = W_out
+        self.lstm_scalar_bias = b_out
 
     def initialize(self, session):
         session.run(self._init_op)
@@ -703,39 +710,41 @@ def Deepbind_model(config, input, model_type):
     elif model_type == 'RNN':
         return Deepbind_RNN_model(config, input)
 
-def run_clip_epoch_parallel(session, models, input_data, config):
-    if isinstance(input_data,list):
-        Nbatch = int(ceil(input_data[0].total_cases * 1.0 / config['minib']))
-        scores = np.zeros([len(models), input_data[0].total_cases])
-    else:
-        Nbatch = int(ceil(input_data.total_cases * 1.0 / config['minib']))
-        scores = np.zeros([len(models), input_data.total_cases])
-    minib = config['minib']
-    num_models = len(models)
-    auc = np.zeros([num_models])
-    for step in range(Nbatch):
-        fetches = {}
-        feed_dict = {}
-        if isinstance(input_data,list):
-            for i,(model,input) in enumerate(zip(models,input_data)):
-                feed_dict[model.x] = input.data[(minib * step): (minib * (step + 1)), :, :]
-                feed_dict[model.y_true] = input.labels[(minib * step): (minib * (step + 1))]
-                fetches["predictions" + str(i)] = model.predict_op
-        else:
-            for i, model in enumerate(models):
-                feed_dict[model.x] = input_data.data[(minib * step): (minib * (step + 1)), :, :]
-                feed_dict[model.y_true] = input_data.labels[(minib * step): (minib * (step + 1))]
-                fetches["predictions" + str(i)] = model.predict_op
-        vals = session.run(fetches, feed_dict)
-        for j in range(num_models):
-            scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
-    for j in range(num_models):
-        if isinstance(input_data, list):
-            auc[j, :] = roc_auc_score(input_data[j].labels, scores[j, :])
-        else:
-            auc[j, :] = roc_auc_score(input_data.labels, scores[j, :])
-    return auc
 
+#
+# def run_clip_epoch_parallel(session, models, input_data, config):
+#     if isinstance(input_data,list):
+#         Nbatch = int(ceil(input_data[0].total_cases * 1.0 / config['minib']))
+#         scores = np.zeros([len(models), input_data[0].total_cases])
+#     else:
+#         Nbatch = int(ceil(input_data.total_cases * 1.0 / config['minib']))
+#         scores = np.zeros([len(models), input_data.total_cases])
+#     minib = config['minib']
+#     num_models = len(models)
+#     auc = np.zeros([num_models])
+#     for step in range(Nbatch):
+#         fetches = {}
+#         feed_dict = {}
+#         if isinstance(input_data,list):
+#             for i,(model,input) in enumerate(zip(models,input_data)):
+#                 feed_dict[model.x] = input.data[(minib * step): (minib * (step + 1)), :, :]
+#                 feed_dict[model.y_true] = input.labels[(minib * step): (minib * (step + 1))]
+#                 fetches["predictions" + str(i)] = model.predict_op
+#         else:
+#             for i, model in enumerate(models):
+#                 feed_dict[model.x] = input_data.data[(minib * step): (minib * (step + 1)), :, :]
+#                 feed_dict[model.y_true] = input_data.labels[(minib * step): (minib * (step + 1))]
+#                 fetches["predictions" + str(i)] = model.predict_op
+#         vals = session.run(fetches, feed_dict)
+#         for j in range(num_models):
+#             scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
+#     for j in range(num_models):
+#         if isinstance(input_data, list):
+#             auc[j, :] = roc_auc_score(input_data[j].labels, scores[j, :])
+#         else:
+#             auc[j, :] = roc_auc_score(input_data.labels, scores[j, :])
+#     return auc
+#
 
 
 
@@ -781,6 +790,7 @@ def run_clip_epoch_parallel(session, models, input_data, config):
                     # input_sequence = minib_seq[:, (window_size * seq_step): (window_size * (seq_step + 1)), :]
                     input_sequence = minib_seq[:, seq_step:seq_step + window_size, :]
                     feed_dict[model.x] = input_sequence
+                    # feed_dict[model.x] = np.concatenate([input_sequence,np.zeros([input_sequence.shape[0],3,input_sequence.shape[2]])],axis=1)
                     fetches["predictions" + str(i)] = model.predict_op
                     vals = session.run(fetches, feed_dict)
                     for j in range(num_models):
@@ -790,7 +800,7 @@ def run_clip_epoch_parallel(session, models, input_data, config):
                         # fetches["predictions" + str(i)] = model.predict_op
         # vals = session.run(fetches, feed_dict)
         for j in range(num_models):
-            scores[j, (minib * step): (minib * (step + 1))] = np.max(batch_scores, axis=2)
+            scores[j, (minib * step): (minib * (step + 1))] = np.mean(batch_scores, axis=2)
     for j in range(num_models):
         if isinstance(input_data, list):
             auc[j] = roc_auc_score(input_data[j].labels, scores[j, :])
@@ -942,7 +952,7 @@ def compute_gradient(session, model, input_data, config):
         fetches['gradient'] = tf.gradients(model.cost, model.x)
         vals = session.run(fetches, feed_dict)
         predictions_train.append(vals['predictions'])
-        gradients_train.append(vals['gradients'])
+        gradients_train.append(vals['gradient'])
 
     for step in range(Nbatch_test):
         fetches = {}
@@ -953,7 +963,8 @@ def compute_gradient(session, model, input_data, config):
         fetches['gradient'] = tf.gradients(model.cost, model.x)
         vals = session.run(fetches, feed_dict)
         predictions_test.append(vals['predictions'])
-        gradients_test.append(vals['gradients'])
+        gradients_test.append(vals['gradient'])
+    return gradients_train, gradients_test
 
 
 def evaluate_model_parallel(session, config, models, input_data):
@@ -1410,11 +1421,13 @@ def load_data_clipseq(protein_name):
 
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:
-        if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
+        if True:
+            # if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2013([protein_name])
         return np.load('../data/rnac/npz_archives/' + str(protein_name) + '.npz')
     else:
+        # if True:
         if not (os.path.isfile('../data/rnac_2009/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2009(protein_name)
