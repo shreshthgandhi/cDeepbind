@@ -746,68 +746,97 @@ def Deepbind_model(config, input, model_type):
 #             auc[j, :] = roc_auc_score(input_data.labels, scores[j, :])
 #     return auc
 #
+#
+# def convert_to_one_hot(input_seq):
+#     one_hot = np.ones([len(input_seq,4])*0.25
+#     for i, nuc in enumerate(input_seq):
+#         if nuc == 'A' or 'a':
+#             one_hot[i,:] = []
 
-
-
-def run_clip_epoch_parallel(session, models, input_data, config):
-    if isinstance(input_data, list):
-        Nbatch = int(ceil(input_data[0].total_cases * 1.0 / config['minib']))
-        scores = np.zeros([len(models), input_data[0].total_cases])
-    else:
-        Nbatch = int(ceil(input_data.total_cases * 1.0 / config['minib']))
-        scores = np.zeros([len(models), input_data.total_cases])
-    minib = config['minib']
-    num_models = len(models)
-    auc = np.zeros([num_models])
+def run_clip_epoch_parallel(session, model, input_data, config):
+    model = model[0]
+    scores = np.zeros(input_data.total_cases)
+    auc = 0
     window_size = 40
-    stride = 1
+    Nbatch = input_data.total_cases
     for step in range(Nbatch):
         fetches = {}
         feed_dict = {}
-        if isinstance(input_data, list):
-            for i, (model, input) in enumerate(zip(models, input_data)):
-                minib_seq = input.data[(minib * step): (minib * (step + 1)), :, :]
-                # n_batch_seq = int(ceil(minib_seq.shape[1] * 1.0 / window_size))
-                n_batch_seq = (minib_seq.shape[1] - window_size) / stride
-                batch_scores = np.zeros([len(models), minib_seq.shape[0], n_batch_seq])
-                for seq_step in range(0, n_batch_seq, step=stride):
-                    # input_sequence = minib_seq[:, (window_size * seq_step): (window_size * (seq_step + 1)), :]
-                    input_sequence = minib_seq[:, seq_step:seq_step + window_size, :]
-                    feed_dict[model.x] = input_sequence
-                    fetches["predictions" + str(i)] = model.predict_op
-                    vals = session.run(fetches, feed_dict)
-                    for j in range(num_models):
-                        batch_scores[j, :, seq_step] = vals['predictions' + str(j)]
-                        # feed_dict[model.x] = input.data[(minib * step): (minib * (step + 1)), :, :]
-                        # feed_dict[model.y_true] = input.labels[(minib * step): (minib * (step + 1))]
-                        # fetches["predictions" + str(i)] = model.predict_op
-        else:
-            for i, model in enumerate(models):
-                minib_seq = input_data.data[(minib * step): (minib * (step + 1)), :, :]
-                # n_batch_seq = int(ceil(minib_seq.shape[1] * 1.0 / window_size))
-                n_batch_seq = (minib_seq.shape[1] - window_size) / stride
-                batch_scores = np.zeros([len(models), minib_seq.shape[0], n_batch_seq])
-                for seq_step in range(n_batch_seq):
-                    # input_sequence = minib_seq[:, (window_size * seq_step): (window_size * (seq_step + 1)), :]
-                    input_sequence = minib_seq[:, seq_step:seq_step + window_size, :]
-                    feed_dict[model.x] = input_sequence
-                    # feed_dict[model.x] = np.concatenate([input_sequence,np.zeros([input_sequence.shape[0],3,input_sequence.shape[2]])],axis=1)
-                    fetches["predictions" + str(i)] = model.predict_op
-                    vals = session.run(fetches, feed_dict)
-                    for j in range(num_models):
-                        batch_scores[j, :, seq_step] = vals['predictions' + str(j)]
-                        # feed_dict[model.x] = input_data.data[(minib * step): (minib * (step + 1)), :, :]
-                        # feed_dict[model.y_true] = input_data.labels[(minib * step): (minib * (step + 1))]
-                        # fetches["predictions" + str(i)] = model.predict_op
-        # vals = session.run(fetches, feed_dict)
-        for j in range(num_models):
-            scores[j, (minib * step): (minib * (step + 1))] = np.mean(batch_scores, axis=2)
-    for j in range(num_models):
-        if isinstance(input_data, list):
-            auc[j] = roc_auc_score(input_data[j].labels, scores[j, :])
-        else:
-            auc[j] = roc_auc_score(input_data.labels, scores[j, :])
+        seq_batch = input_data.data[step:step + 1, :, :]
+        last_element = np.where(seq_batch[0, :, 0] == 0)[0][0]
+        n_batch_seq = (last_element - window_size)
+        batch_scores = np.zeros([n_batch_seq])
+        for seq_step in range(n_batch_seq):
+            input_sequence = seq_batch[:, seq_step:seq_step + window_size, :]
+            feed_dict[model.x] = input_sequence
+            fetches['predictions'] = model.predict_op
+            vals = session.run(fetches, feed_dict)
+            batch_scores[seq_step] = vals['predictions']
+        scores[step] = np.max(batch_scores)
+    auc = roc_auc_score(input_data.labels, scores)
     return auc
+
+
+# def run_clip_epoch_parallel(session, models, input_data, config):
+#
+#     if isinstance(input_data, list):
+#         Nbatch = int(ceil(input_data[0].total_cases * 1.0 / config['minib']))
+#         scores = np.zeros([len(models), input_data[0].total_cases])
+#     else:
+#         Nbatch = int(ceil(input_data.total_cases * 1.0 / config['minib']))
+#         scores = np.zeros([len(models), input_data.total_cases])
+#     minib = config['minib']
+#     num_models = len(models)
+#     auc = np.zeros([num_models])
+#     window_size = 40
+#     stride = 1
+#     for step in range(Nbatch):
+#         fetches = {}
+#         feed_dict = {}
+#         if isinstance(input_data, list):
+#             for i, (model, input) in enumerate(zip(models, input_data)):
+#                 minib_seq = input.data[(minib * step): (minib * (step + 1)), :, :]
+#                 # n_batch_seq = int(ceil(minib_seq.shape[1] * 1.0 / window_size))
+#                 n_batch_seq = (minib_seq.shape[1] - window_size) / stride
+#                 batch_scores = np.zeros([len(models), minib_seq.shape[0], n_batch_seq])
+#                 for seq_step in range(0, n_batch_seq, step=stride):
+#                     # input_sequence = minib_seq[:, (window_size * seq_step): (window_size * (seq_step + 1)), :]
+#                     input_sequence = minib_seq[:, seq_step:seq_step + window_size, :]
+#                     feed_dict[model.x] = input_sequence
+#                     fetches["predictions" + str(i)] = model.predict_op
+#                     vals = session.run(fetches, feed_dict)
+#                     for j in range(num_models):
+#                         batch_scores[j, :, seq_step] = vals['predictions' + str(j)]
+#                         # feed_dict[model.x] = input.data[(minib * step): (minib * (step + 1)), :, :]
+#                         # feed_dict[model.y_true] = input.labels[(minib * step): (minib * (step + 1))]
+#                         # fetches["predictions" + str(i)] = model.predict_op
+#         else:
+#             for i, model in enumerate(models):
+#                 minib_seq = input_data.data[(minib * step): (minib * (step + 1)), :, :]
+#                 # n_batch_seq = int(ceil(minib_seq.shape[1] * 1.0 / window_size))
+#                 n_batch_seq = (minib_seq.shape[1] - window_size) / stride
+#                 batch_scores = np.zeros([len(models), minib_seq.shape[0], n_batch_seq])
+#                 for seq_step in range(n_batch_seq):
+#                     # input_sequence = minib_seq[:, (window_size * seq_step): (window_size * (seq_step + 1)), :]
+#                     input_sequence = minib_seq[:, seq_step:seq_step + window_size, :]
+#                     feed_dict[model.x] = input_sequence
+#                     # feed_dict[model.x] = np.concatenate([input_sequence,np.zeros([input_sequence.shape[0],3,input_sequence.shape[2]])],axis=1)
+#                     fetches["predictions" + str(i)] = model.predict_op
+#                     vals = session.run(fetches, feed_dict)
+#                     for j in range(num_models):
+#                         batch_scores[j, :, seq_step] = vals['predictions' + str(j)]
+#                         # feed_dict[model.x] = input_data.data[(minib * step): (minib * (step + 1)), :, :]
+#                         # feed_dict[model.y_true] = input_data.labels[(minib * step): (minib * (step + 1))]
+#                         # fetches["predictions" + str(i)] = model.predict_op
+#         # vals = session.run(fetches, feed_dict)
+#         for j in range(num_models):
+#             scores[j, (minib * step): (minib * (step + 1))] = np.max(batch_scores, axis=2)
+#     for j in range(num_models):
+#         if isinstance(input_data, list):
+#             auc[j] = roc_auc_score(input_data[j].labels, scores[j, :])
+#         else:
+#             auc[j] = roc_auc_score(input_data.labels, scores[j, :])
+#     return auc
 
 
 
