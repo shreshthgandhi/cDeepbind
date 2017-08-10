@@ -45,12 +45,15 @@ def main(target_protein, model_type, evaluation_type, CLIPSEQ_experiment=None):
                                'w'))
             else:
 
-                # grad_test, grad_train = utils.compute_gradient(sess,model, input_data,config)
-                (cost_train, cost_test, training_pearson, test_pearson, training_scores,
-                 test_scores) = utils.run_epoch_parallel(sess, [model], input_data, config, epoch=1, train=False,
-                                                         verbose=False, testing=True, scores=True)
+                grad_test, predictions_test = utils.compute_gradient(sess, model, input_data, config)
+                np.savez(model_dir + protein_id + 'gradient_scores.npz', gradients=grad_test,
+                         predictions=predictions_test, labels=input_data.test_labels, test_seqs=input_data.test_data)
 
-                print("True pearson for %s is %f" % (target_protein, test_pearson[0, 0]))
+                # (cost_train, cost_test, training_pearson, test_pearson, training_scores,
+                #  test_scores) = utils.run_epoch_parallel(sess, [model], input_data, config, epoch=1, train=False,
+                #                                          verbose=False, testing=True, scores=True)
+
+                # print("True pearson for %s is %f" % (target_protein, test_pearson[0, 0]))
 
 
 

@@ -492,7 +492,8 @@ class Deepbind_RNN_struct_model(object):
         # lstm_output_layer = tf.reshape((tf.matmul(tf.reshape(outputs,[-1,n_hidden]),W_out)+b_out),[-1,seq_current,1])
         # h_final = tf.reduce_max(lstm_output_layer, axis=[1,2])
         h_final = tf.squeeze(
-            tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1])), W_out) + b_out)
+            tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1]), axis=[1]),
+                      W_out) + b_out)
 
         cost_batch = tf.square(h_final - y_true)
         self._cost = cost = tf.reduce_mean(cost_batch, name='cost')
@@ -935,24 +936,21 @@ def train_model_parallel(session, config, models, input_data, early_stop = False
 
 
 def compute_gradient(session, model, input_data, config):
-    Nbatch_train = input_data.training_cases // config['minib']
-    Nbatch_test = input_data.test_cases // config['minib']
+    Nbatch_test = int(ceil(input_data.test_cases * 1.0 / config['minib']))
     minib = config['minib']
-    predictions_train = []
-    gradients_train = []
-    predictions_test = []
-    gradients_test = []
+    predictions_test = np.zeros(shape=input_data.test_data.shape[0])
+    gradients_test = np.zeros(shape=input_data.test_data.shape)
 
-    for step in range(Nbatch_train):
-        fetches = {}
-        feed_dict = {}
-        feed_dict[model.x] = input_data.training_data[(minib * step): (minib * (step + 1)), :, :]
-        feed_dict[model.y_true] = input_data.training_labels[(minib * step): (minib * (step + 1))]
-        fetches["predictions"] = model.predict_op
-        fetches['gradient'] = tf.gradients(model.cost, model.x)
-        vals = session.run(fetches, feed_dict)
-        predictions_train.append(vals['predictions'])
-        gradients_train.append(vals['gradient'])
+    # for step in range(Nbatch_train):
+    #     fetches = {}
+    #     feed_dict = {}
+    #     feed_dict[model.x] = input_data.training_data[(minib * step): (minib * (step + 1)), :, :]
+    #     feed_dict[model.y_true] = input_data.training_labels[(minib * step): (minib * (step + 1))]
+    #     fetches["predictions"] = model.predict_op
+    #     fetches['gradient'] = tf.gradients(model.cost, model.x)
+    #     vals = session.run(fetches, feed_dict)
+    #     predictions_train.append(vals['predictions'])
+    #     gradients_train.append(vals['gradient'])
 
     for step in range(Nbatch_test):
         fetches = {}
@@ -962,9 +960,9 @@ def compute_gradient(session, model, input_data, config):
         fetches["predictions"] = model.predict_op
         fetches['gradient'] = tf.gradients(model.cost, model.x)
         vals = session.run(fetches, feed_dict)
-        predictions_test.append(vals['predictions'])
-        gradients_test.append(vals['gradient'])
-    return gradients_train, gradients_test
+        gradients_test[(minib * step): (minib * (step + 1)), :, :] = (vals['gradient'][0])
+        predictions_test[(minib * step): (minib * (step + 1))] = (vals['predictions'])
+    return predictions_test, gradients_test
 
 
 def evaluate_model_parallel(session, config, models, input_data):
@@ -1295,7 +1293,7 @@ def load_data_rnac2009(protein_name):
 
     with open(os.path.join(structure_folder, protein_name + '_data_full_A_profile'), 'r') as train_struct_file:
         for line in train_struct_file:
-            probs = np.ones([num_struct_classes, seq_len_train]) * (1.0 / num_struct_classes)
+            probs = np.ones([num_struct_classes, seq_len_train]) * (1 / num_struct_classes)
             for i in range(5):
                 values_line = train_struct_file.next().strip()
                 values = np.array(map(np.float32, values_line.split('\t')))
@@ -1303,7 +1301,7 @@ def load_data_rnac2009(protein_name):
             training_structs.append(probs)
     with open(os.path.join(structure_folder, protein_name + '_data_full_B_profile'), 'r') as test_struct_file:
         for line in test_struct_file:
-            probs = np.ones([num_struct_classes, seq_len_test]) * (1.0 / num_struct_classes)
+            probs = np.ones([num_struct_classes, seq_len_test]) * (1 / num_struct_classes)
             for i in range(5):
                 values_line = test_struct_file.next().strip()
                 values = np.array(map(np.float32, values_line.split('\t')))
@@ -1421,8 +1419,8 @@ def load_data_clipseq(protein_name):
 
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:
-        if True:
-            # if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
+        # if True:
+        if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2013([protein_name])
         return np.load('../data/rnac/npz_archives/' + str(protein_name) + '.npz')
