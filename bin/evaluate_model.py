@@ -34,14 +34,16 @@ def main(target_protein, model_type, evaluation_type, CLIPSEQ_experiment=None):
             saver.restore(sess,
                           os.path.join(model_dir, target_protein + '_best_model.ckpt'))
             if evaluation_type == 'CLIPSEQ':
-                auc = utils.run_clip_epoch_parallel(sess, [model], input_data, config)
+                # auc = utils.run_clip_epoch_parallel(sess, [model], input_data, config)
+                auc = utils.run_clip_epoch_shorter(sess, [model], input_data, config)
                 print(target_protein, CLIPSEQ_experiment, auc)
-                result_dict = {'auc': auc}
+                result_dict = {'auc': float(auc)}
                 save_dir = '../results_final/'
+                print(auc)
 
                 yaml.dump(result_dict,
                           open(os.path.join(save_dir,
-                                            target_protein + '_' + CLIPSEQ_experiment + '_' + model_type + '_' + '.yml'),
+                                            target_protein + '_' + CLIPSEQ_experiment + '_' + model_type + '_updated' + '.yml'),
                                'w'))
             else:
 

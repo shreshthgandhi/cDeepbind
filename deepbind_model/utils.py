@@ -12,9 +12,9 @@ class Deepbind_clip_input_struct(object):
     def __init__(self, inf):
         (data_one_hot, labels,
          structures,
-         total_cases, seq_length) = (inf["data_one_hot"], inf["labels"],
-                                     inf["structures"], inf["total_cases"],
-                                     inf["seq_length"])
+         total_cases, seq_length, self.start_pos, self.end_pos) = (inf["data_one_hot"], inf["labels"],
+                                                                   inf["structures"], inf["total_cases"],
+                                                                   inf["seq_length"], inf['start_pos'], inf['end_pos'])
         self.data = np.append(data_one_hot, np.transpose(structures, [0, 2, 1]), axis=2)
         self.seq_len = seq_length
         self.total_cases = self.data.shape[0]
@@ -196,83 +196,84 @@ class Deepbind_CNN_model(object):
         return self.target_scores
 
 
-class Deepbind_CNN_struct_model(object):
-    """The deepbind_CNN model with structure"""
-
-    def __init__(self, config, input_):
-        self._config = config
-        self._input = input_
-        self.weight_initializer = tf.truncated_normal_initializer(stddev=config['init_scale'])
-        self.rna_sequence = tf.placeholder(tf.float32, shape=[None, None, 9], name='input_sequence')
-        self.target_scores = tf.placeholder(tf.float32, shape=[None], name='target_scores')
-        self.target_scores_exp = tf.expand_dims(self.target_scores, 1)
-        conv_input = self.rna_sequence
-        for layer in range(config['num_conv_layers']):
-            if layer == (config['num_conv_layers'] - 1):
-                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=1,
-                                                    kernel_size=config['filter_lengths'][layer],
-                                                    strides=config['strides'][layer],
-                                                    padding='SAME', activation=None,
-                                                    kernel_initializer=self.weight_initializer,
-                                                    name='conv_layer_' + str(layer))
-            else:
-                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
-                                                    kernel_size=config['filter_lengths'][layer],
-                                                    strides=config['strides'][layer],
-                                                    padding='SAME', activation=tf.nn.relu,
-                                                    kernel_initializer=self.weight_initializer,
-                                                    name='conv_layer_' + str(layer))
-
-            conv_input = self.conv_output
-        self.conv_output = tf.squeeze(self.conv_output, axis=2)
-        final_pool = config.get('final_pool', 'max')
-        if final_pool == 'max':
-            self.target_predictions = tf.reduce_max(self.conv_output, axis=[1], name='max_pool', keep_dims=True)
-        if final_pool == 'avg':
-            self.target_predictions = tf.reduce_mean(self.conv_output, axis=[1], name='avg_pool', keep_dims=True)
-        if final_pool == 'max_avg':
-            max_pool = tf.reduce_max(self.conv_output, axis=[1], name='max_pool', keep_dims=True)
-            avg_pool = tf.reduce_mean(self.conv_output, axis=[1], name='avg_pool', keep_dims=True)
-            self.target_predictions = tf.layers.dense(tf.concat([max_pool, avg_pool], axis=1), units=1,
-                                                      kernel_regularizer=tf.contrib.layers.l2_regularizer(
-                                                          scale=config['lam_model']),
-                                                      name='target_prediction')
-        self.loss = tf.losses.mean_squared_error(self.target_scores_exp, self.target_predictions,
-                                                 scope='mean_squared_error')
-        self._train_op = tf.contrib.layers.optimize_loss(self.loss, tf.contrib.framework.get_global_step(),
-                                                         learning_rate=tf.constant(config['eta_model'], tf.float32),
-                                                         optimizer='Adam',
-                                                         clip_gradients=config.get('gradient_clip_value', 20.0),
-                                                         name='train_op')
-
-    @property
-    def input(self):
-        return self._input
-
-    @property
-    def config(self):
-        return self._config
-
-    @property
-    def cost(self):
-        return self.loss
-
-    @property
-    def train_op(self):
-        return self._train_op
-
-    @property
-    def predict_op(self):
-        return tf.squeeze(self.target_predictions)
-
-    @property
-    def x(self):
-        return self.rna_sequence
-
-    @property
-    def y_true(self):
-        return self.target_scores
-
+#
+# class Deepbind_CNN_struct_model(object):
+#     """The deepbind_CNN model with structure"""
+#
+#     def __init__(self, config, input_):
+#         self._config = config
+#         self._input = input_
+#         self.weight_initializer = tf.truncated_normal_initializer(stddev=config['init_scale'])
+#         self.rna_sequence = tf.placeholder(tf.float32, shape=[None, None, 9], name='input_sequence')
+#         self.target_scores = tf.placeholder(tf.float32, shape=[None], name='target_scores')
+#         self.target_scores_exp = tf.expand_dims(self.target_scores, 1)
+#         conv_input = self.rna_sequence
+#         for layer in range(config['num_conv_layers']):
+#             if layer == (config['num_conv_layers'] - 1):
+#                 self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=1,
+#                                                     kernel_size=config['filter_lengths'][layer],
+#                                                     strides=config['strides'][layer],
+#                                                     padding='SAME', activation=None,
+#                                                     kernel_initializer=self.weight_initializer,
+#                                                     name='conv_layer_' + str(layer))
+#             else:
+#                 self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
+#                                                     kernel_size=config['filter_lengths'][layer],
+#                                                     strides=config['strides'][layer],
+#                                                     padding='SAME', activation=tf.nn.relu,
+#                                                     kernel_initializer=self.weight_initializer,
+#                                                     name='conv_layer_' + str(layer))
+#
+#             conv_input = self.conv_output
+#         self.conv_output = tf.squeeze(self.conv_output, axis=2)
+#         final_pool = config.get('final_pool', 'max')
+#         if final_pool == 'max':
+#             self.target_predictions = tf.reduce_max(self.conv_output, axis=[1], name='max_pool', keep_dims=True)
+#         if final_pool == 'avg':
+#             self.target_predictions = tf.reduce_mean(self.conv_output, axis=[1], name='avg_pool', keep_dims=True)
+#         if final_pool == 'max_avg':
+#             max_pool = tf.reduce_max(self.conv_output, axis=[1], name='max_pool', keep_dims=True)
+#             avg_pool = tf.reduce_mean(self.conv_output, axis=[1], name='avg_pool', keep_dims=True)
+#             self.target_predictions = tf.layers.dense(tf.concat([max_pool, avg_pool], axis=1), units=1,
+#                                                       kernel_regularizer=tf.contrib.layers.l2_regularizer(
+#                                                           scale=config['lam_model']),
+#                                                       name='target_prediction')
+#         self.loss = tf.losses.mean_squared_error(self.target_scores_exp, self.target_predictions,
+#                                                  scope='mean_squared_error')
+#         self._train_op = tf.contrib.layers.optimize_loss(self.loss, tf.contrib.framework.get_global_step(),
+#                                                          learning_rate=tf.constant(config['eta_model'], tf.float32),
+#                                                          optimizer='Adam',
+#                                                          clip_gradients=config.get('gradient_clip_value', 20.0),
+#                                                          name='train_op')
+#
+#     @property
+#     def input(self):
+#         return self._input
+#
+#     @property
+#     def config(self):
+#         return self._config
+#
+#     @property
+#     def cost(self):
+#         return self.loss
+#
+#     @property
+#     def train_op(self):
+#         return self._train_op
+#
+#     @property
+#     def predict_op(self):
+#         return tf.squeeze(self.target_predictions)
+#
+#     @property
+#     def x(self):
+#         return self.rna_sequence
+#
+#     @property
+#     def y_true(self):
+#         return self.target_scores
+#
 
 # class Deepbind_RNN_struct_model(object):
 #     """The deepbind_RNN model with structure"""
@@ -455,7 +456,90 @@ class Deepbind_CNN_struct_model(object):
 #     @property
 #     def y_true(self):
 #         return self._y_true
+class Deepbind_CNN_struct_model(object):
+    """The deepbind_CNN model with structure"""
 
+    def __init__(self, config, input_):
+        self._config = config
+        eta_model = config['eta_model']
+        lam_model = config['lam_model']
+        self.motif_len = config['filter_lengths'][0]  # Tunable Motif length
+        self.num_motifs = config['num_filters'][0]  # Number of tunable motifs
+        self.motif_len2 = config['filter_lengths'][1]
+        self.num_motifs2 = config['num_filters'][1]
+        self._init_op = tf.global_variables_initializer()
+
+        self._x = x = tf.placeholder(tf.float32, shape=[None, None, 9], name='One_hot_data')
+        self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
+
+        x_image = tf.expand_dims(x, 2)
+
+        W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 9, self.num_motifs], stddev=0.01), name='W_Conv1')
+        b_conv1 = tf.Variable(tf.constant(0.001, shape=[self.num_motifs]), name='b_conv1')
+
+        h_conv1 = tf.nn.conv2d(x_image, W_conv1,
+                               strides=[1, 1, 1, 1], padding='SAME')
+        h_relu_conv1 = tf.nn.relu(h_conv1 + b_conv1, name='First_layer_output')
+        W_conv2 = tf.Variable(tf.random_normal([self.motif_len2, 1, self.num_motifs, 1]), name='W_conv2')
+        b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name='b_conv2')
+        h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
+                               strides=[1, 1, 1, 1], padding='SAME')
+
+        h_relu_conv2 = tf.nn.relu(h_conv2 + b_conv2)
+        # h_max=tf.reduce_max(h_relu_conv2,reduction_indices=[1,2,3])
+        # Taking max of rectified output was giving poor performance
+        h_max = tf.reduce_max(h_conv2 + b_conv2, axis=[1, 2, 3], name='h_max')
+        h_avg = tf.reduce_mean(h_conv2 + b_conv2, axis=[1, 2, 3], name='h_avg')
+        W_final = tf.Variable(tf.random_normal([2, 1], stddev=0.1))
+        b_final = tf.Variable(tf.constant(0.001, shape=[]))
+        h_final = tf.squeeze(tf.matmul(tf.stack([h_max, h_avg], axis=1), W_final) + b_final)
+        # Output has shape None and is a vector of length minib
+
+        # cost_batch = tf.square(h_max - y_true)
+        cost_batch = tf.square(h_final - y_true)
+        self._cost = cost = tf.reduce_mean(cost_batch)
+        # tf.scalar_summary("Training Loss", cost)
+        norm_w = (tf.reduce_sum(tf.abs(W_conv1)) + tf.reduce_sum(tf.abs(W_conv2)))
+        # optimizer = tf.train.MomentumOptimizer(learning_rate=eta_model,
+        #                                        momentum=momentum_model)
+        optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
+
+        self._train_op = optimizer.minimize(cost + norm_w * lam_model)
+        self._predict_op = h_final
+
+    def initialize(self, session):
+        session.run(self._init_op)
+
+    @property
+    def input(self):
+        return self._input
+
+    @property
+    def config(self):
+        return self._config
+
+    @property
+    def cost(self):
+        return self._cost
+
+    @property
+    def train_op(self):
+        return self._train_op
+
+    @property
+    def predict_op(self):
+        return self._predict_op
+
+    #     @property
+    #     def init_op(self):
+    #         return self._init_op
+    @property
+    def x(self):
+        return self._x
+
+    @property
+    def y_true(self):
+        return self._y_true
 
 class Deepbind_RNN_struct_model(object):
     """The deepbind_RNN model with structure"""
@@ -482,7 +566,7 @@ class Deepbind_RNN_struct_model(object):
         b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name='b_conv2')
         h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
                                strides=[1, 1, 1, 1], padding='SAME')
-        n_hidden = config.get('lstm_size', 10)
+        n_hidden = config.get('lstm_size', 20)
         W_out = tf.Variable(tf.random_normal([n_hidden, 1]), name='W_hidden')
         b_out = tf.Variable(tf.constant(0.001, shape=[1]), name='b_hidden')
         h_input = tf.squeeze(tf.nn.relu(h_conv2 + b_conv2), axis=[3], name='lstm_input')
@@ -563,7 +647,7 @@ class Deepbind_RNN_model(object):
         b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name='b_conv2')
         h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
                                strides=[1, 1, 1, 1], padding='SAME')
-        n_hidden = config.get('lstm_size', 20)
+        n_hidden = config.get('lstm_size', 10)
         W_out = tf.Variable(tf.random_normal([n_hidden, 1]), name='W_hidden')
         b_out = tf.Variable(tf.constant(0.001, shape=[1]), name='b_hidden')
         h_input = tf.squeeze(tf.nn.relu(h_conv2 + b_conv2), axis=[3], name='lstm_input')
@@ -712,7 +796,7 @@ def Deepbind_model(config, input, model_type):
         return Deepbind_RNN_model(config, input)
 
 
-#
+# #
 # def run_clip_epoch_parallel(session, models, input_data, config):
 #     if isinstance(input_data,list):
 #         Nbatch = int(ceil(input_data[0].total_cases * 1.0 / config['minib']))
@@ -741,18 +825,18 @@ def Deepbind_model(config, input, model_type):
 #             scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
 #     for j in range(num_models):
 #         if isinstance(input_data, list):
-#             auc[j, :] = roc_auc_score(input_data[j].labels, scores[j, :])
+#             auc[j] = roc_auc_score(input_data[j].labels, scores[j, :])
 #         else:
-#             auc[j, :] = roc_auc_score(input_data.labels, scores[j, :])
+#             auc[j] = roc_auc_score(input_data.labels, scores[j, :])
 #     return auc
-#
+# #
 #
 # def convert_to_one_hot(input_seq):
 #     one_hot = np.ones([len(input_seq,4])*0.25
 #     for i, nuc in enumerate(input_seq):
 #         if nuc == 'A' or 'a':
 #             one_hot[i,:] = []
-
+#
 def run_clip_epoch_parallel(session, model, input_data, config):
     model = model[0]
     scores = np.zeros(input_data.total_cases)
@@ -760,10 +844,17 @@ def run_clip_epoch_parallel(session, model, input_data, config):
     window_size = 40
     Nbatch = input_data.total_cases
     for step in range(Nbatch):
+        print(step)
         fetches = {}
         feed_dict = {}
         seq_batch = input_data.data[step:step + 1, :, :]
-        last_element = np.where(seq_batch[0, :, 0] == 0)[0][0]
+        last_element = np.where(seq_batch[0, :, 0] == 0)[0]
+        if last_element.shape[0]:
+            last_element = last_element[0]
+        else:
+            last_element = seq_batch.shape[1]
+        #
+        # last_element = np.where(seq_batch[0, :, 0] == 0)[0][0]
         n_batch_seq = (last_element - window_size)
         batch_scores = np.zeros([n_batch_seq])
         for seq_step in range(n_batch_seq):
@@ -772,11 +863,51 @@ def run_clip_epoch_parallel(session, model, input_data, config):
             fetches['predictions'] = model.predict_op
             vals = session.run(fetches, feed_dict)
             batch_scores[seq_step] = vals['predictions']
-        scores[step] = np.max(batch_scores)
+        scores[step] = np.mean(batch_scores)
     auc = roc_auc_score(input_data.labels, scores)
     return auc
 
 
+def run_clip_epoch_shorter(session, model, input_data, config):
+    model = model[0]
+    scores = np.zeros(input_data.total_cases)
+    auc = 0
+    window_size = 40
+    Nbatch = input_data.total_cases
+    fetches = {}
+    feed_dict = {}
+    fetches['predictions'] = model.predict_op
+    for step in range(Nbatch):
+        # if input_data.end_pos[step] -input_data.start_pos[step] >=40:
+        feed_dict[model.x] = input_data.data[step:step + 1, input_data.start_pos[step]:input_data.end_pos[step] + 1, :]
+        # else:
+        # feed_dict[model.x] = input_data.data[step:step + 1, input_data.start_pos[step]:input_data.start_pos[step]+40, :]
+        vals = session.run(fetches, feed_dict)
+        scores[step] = vals['predictions']
+        # seq_batch = input_data.data[step:step + 1, :, :]
+        # last_element = np.where(seq_batch[0, :, 0] == 0)[0]
+        # if last_element.shape[0]:
+        #     last_element = last_element[0]
+        # else:
+        #     last_element = seq_batch.shape[1]
+
+        #
+        # last_element = np.where(seq_batch[0, :, 0] == 0)[0][0]
+        # n_batch_seq = (last_element - window_size)
+        # batch_scores = np.zeros([n_batch_seq])
+        # for seq_step in range(n_batch_seq):
+        #     input_sequence = seq_batch[:, seq_step:seq_step + window_size, :]
+        #     feed_dict[model.x] = input_sequence
+        #     fetches['predictions'] = model.predict_op
+        #     vals = session.run(fetches, feed_dict)
+        #     batch_scores[seq_step] = vals['predictions']
+        # scores[step] = np.mean(batch_scores)
+    auc = roc_auc_score(input_data.labels, scores)
+    return auc
+
+
+#
+#
 # def run_clip_epoch_parallel(session, models, input_data, config):
 #
 #     if isinstance(input_data, list):
@@ -837,8 +968,8 @@ def run_clip_epoch_parallel(session, model, input_data, config):
 #         else:
 #             auc[j] = roc_auc_score(input_data.labels, scores[j, :])
 #     return auc
-
-
+#
+#
 
 
 def run_epoch_parallel(session, models, input_data, config, epoch, train=False, verbose=False, testing=False,
@@ -1393,16 +1524,96 @@ def load_data_clipseq(protein_name):
     num_struct_classes = 5
     seqs = []
     labels = []
-    with open(os.path.join(data_folder, protein_name + '.ls.positives.fa'), 'r') as pos_file:
+    with open(os.path.join(data_folder, protein_name + '.train.positives.fa'), 'r') as pos_file:
         for line in pos_file:
             seqs.append(pos_file.next().strip())
             labels.append(1.0)
-    with open(os.path.join(data_folder, protein_name + '.ls.negatives.fa'), 'r') as neg_file:
+    with open(os.path.join(data_folder, protein_name + '.train.negatives.fa'), 'r') as neg_file:
         for line in neg_file:
             seqs.append(neg_file.next().strip())
             labels.append(0.0)
     seq_len = max([len(seq) for seq in seqs])
 
+    with open(os.path.join(structure_folder, protein_name + '.train.positives_combined.txt'), 'r') as pos_struct_file:
+        for line in pos_struct_file:
+            probs = np.ones([num_struct_classes, seq_len]) * (1 / num_struct_classes)
+            for i in range(5):
+                values_line = pos_struct_file.next().strip()
+                values = np.array(map(np.float32, values_line.split('\t')))
+                probs[i, 0:values.shape[0]] = values
+            structs.append(probs)
+    with open(os.path.join(structure_folder, protein_name + '.train.negatives_combined.txt'), 'r') as neg_struct_file:
+        for line in neg_struct_file:
+            probs = np.ones([num_struct_classes, seq_len]) * (1 / num_struct_classes)
+            for i in range(5):
+                values_line = neg_struct_file.next().strip()
+                values = np.array(map(np.float32, values_line.split('\t')))
+                probs[i, 0:values.shape[0]] = values
+            structs.append(probs)
+
+    seq_enc = np.ones((len(seqs), seq_len, 4)) * 0.25
+    for i, case in enumerate(seqs):
+        for j, nuc in enumerate(case):
+            if nuc == 'A' or nuc == 'a':
+                seq_enc[i, j] = np.array([1, 0, 0, 0])
+            elif nuc == 'G' or nuc == 'g':
+                seq_enc[i, j] = np.array([0, 1, 0, 0])
+            elif nuc == 'C' or nuc == 'c':
+                seq_enc[i, j] = np.array([0, 0, 1, 0])
+            elif nuc == 'U' or nuc == 'u':
+                seq_enc[i, j] = np.array([0, 0, 0, 1])
+            elif nuc == 'T' or nuc == 't':
+                seq_enc[i, j] = np.array([0, 0, 0, 1])
+    seq_enc -= 0.25
+    data_one_hot = np.array(seq_enc, np.float32)
+    labels_array = np.array(labels, np.float32)
+    total_cases = data_one_hot.shape[0]
+    structures = np.array(structs, np.float32)
+    save_target = os.path.join('../data/GraphProt_CLIP_sequences/npz_archives', protein_name + '.npz')
+    np.savez(save_target, data_one_hot=data_one_hot,
+             labels=labels_array,
+             seq_length=seq_len,
+             structures=structures,
+             total_cases=total_cases)
+    print("[*] Finished loading data for " + protein_name)
+
+
+def load_data_clipseq_shorter(protein_name):
+    data_folder = '../data/GraphProt_CLIP_sequences'
+    structure_folder = '../data/GraphProt_CLIP_sequences/structure_annotations/' + protein_name
+    structs = []
+    num_struct_classes = 5
+    seqs = []
+    labels = []
+    pos_start_pos = []
+    pos_end_pos = []
+    neg_start_pos = []
+    neg_end_pos = []
+    start_pos = []
+    end_pos = []
+    with open(os.path.join(data_folder, protein_name + '.ls.positives.fa'), 'r') as pos_file:
+        for line in pos_file:
+            full_seq = pos_file.next().strip()
+            bound_region = np.array([int(c.isupper()) for c in full_seq], dtype=np.int32)
+            upper_case_region = np.where(bound_region == True)
+            start_bound = upper_case_region[0][0]
+            end_bound = upper_case_region[0][-1]
+            start_pos.append(start_bound)
+            end_pos.append(end_bound)
+            seqs.append(full_seq)
+            labels.append(1.0)
+    with open(os.path.join(data_folder, protein_name + '.ls.negatives.fa'), 'r') as neg_file:
+        for line in neg_file:
+            full_seq = neg_file.next().strip()
+            bound_region = np.array([int(c.isupper()) for c in full_seq], dtype=np.int32)
+            upper_case_region = np.where(bound_region == True)
+            start_bound = upper_case_region[0][0]
+            end_bound = upper_case_region[0][-1]
+            start_pos.append(start_bound)
+            end_pos.append(end_bound)
+            seqs.append(full_seq)
+            labels.append(0.0)
+    seq_len = max([len(seq) for seq in seqs])
     with open(os.path.join(structure_folder, protein_name + '.ls.positives_combined'), 'r') as pos_struct_file:
         for line in pos_struct_file:
             probs = np.ones([num_struct_classes, seq_len]) * (1 / num_struct_classes)
@@ -1443,8 +1654,11 @@ def load_data_clipseq(protein_name):
              labels=labels_array,
              seq_length=seq_len,
              structures=structures,
-             total_cases=total_cases)
+             total_cases=total_cases,
+             start_pos=np.array(start_pos),
+             end_pos=np.array(end_pos))
     print("[*] Finished loading data for " + protein_name)
+
 
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:

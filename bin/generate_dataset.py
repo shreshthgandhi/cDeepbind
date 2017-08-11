@@ -2,7 +2,7 @@ import argparse
 import os.path
 import subprocess
 
-from deepbind_model.utils import load_data_clipseq
+from deepbind_model.utils import load_data_clipseq_shorter
 from deepbind_model.utils import load_data_rnac2009
 
 
@@ -122,7 +122,7 @@ def main(dataset_type, protein):
     elif dataset_type == 'RNAC_2009_numpy':
         load_data_rnac2009(protein_name=protein)
     elif dataset_type == 'CLIP_numpy':
-        load_data_clipseq(protein)
+        load_data_clipseq_shorter(protein)
 
 
 if __name__ == "__main__":

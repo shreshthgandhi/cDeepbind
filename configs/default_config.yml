@@ -1,6 +1,6 @@
 num_model_trials: 3
-model_testing_list: [RNN]
-train_epochs: 15
+model_testing_list: [CNN_struct]
+train_epochs: 35
 model_size_flag: large
 num_calibrations: 5
 recalibrate: False
