@@ -59,7 +59,13 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations, 
                                            models, inputs,
                                            early_stop=False)
             for i, model_type in enumerate(model_testing_list):
-                best_model_idx = np.argmin(test_cost[i * num_final_runs:(i + 1) * num_final_runs, -1])
+                test_cost_filtered = np.zeros(test_cost[:, -1].shape)
+                for count, num in enumerate(test_pearson[:, -1]):
+                    if np.isnan(num):
+                        test_cost_filtered[count] = np.inf
+                    else:
+                        test_cost_filtered[count] = test_cost[count]
+                best_model_idx = np.argmin(test_cost_filtered[i * num_final_runs:(i + 1) * num_final_runs])
 
                 abs_best_model_idx = i * num_final_runs + best_model_idx
                 best_model_vars = tf.contrib.framework.get_variables(scope='model' + str(abs_best_model_idx))

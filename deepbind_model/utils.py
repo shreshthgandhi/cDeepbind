@@ -61,6 +61,8 @@ class Deepbind_no_struct_input(object):
         self.seq_length = int(seq_length)
         self.training_cases = self.training_data.shape[0]
         self.test_cases = self.test_data.shape[0]
+        self.training_seq_len = inf['train_seq_len']
+        self.test_seq_len = inf['test_seq_len']
 
 
 class Deepbind_struct_input(object):
@@ -111,6 +113,8 @@ class Deepbind_struct_input(object):
         self.seq_length = int(seq_length)
         self.training_cases = self.training_data.shape[0]
         self.test_cases = self.test_data.shape[0]
+        self.training_seq_len = inf['train_seq_len']
+        self.test_seq_len = inf['test_seq_len']
 
 def Deepbind_input(input_config,inf,model,validation=False,fold_id=1):
     if 'struct' in model or 'STRUCT' in model:
@@ -541,6 +545,93 @@ class Deepbind_CNN_struct_model(object):
     def y_true(self):
         return self._y_true
 
+
+class Deepbind_RNN_struct_track_model(object):
+    """The deepbind_RNN model with structure"""
+
+    def __init__(self, config, input_):
+        self._config = config
+        eta_model = config['eta_model']
+        lam_model = config['lam_model']
+        self.motif_len = config['motif_len']  # Tunable Motif length
+        self.num_motifs = config['num_motifs']  # Number of tunable motifs
+        self.motif_len2 = config['motif_len']
+        self._init_op = tf.global_variables_initializer()
+        self._x = x = tf.placeholder(tf.float32, shape=[None, None, 9], name='One_hot_data')
+        self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
+        x_image = tf.expand_dims(x, 2)
+
+        W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 9, self.num_motifs], stddev=0.01), name='W_Conv1')
+        b_conv1 = tf.Variable(tf.constant(0.001, shape=[self.num_motifs]), name='b_conv1')
+
+        h_conv1 = tf.nn.conv2d(x_image, W_conv1,
+                               strides=[1, 1, 1, 1], padding='SAME')
+        h_relu_conv1 = tf.nn.relu(h_conv1 + b_conv1, name='First_layer_output')
+        W_conv2 = tf.Variable(tf.random_normal([self.motif_len2, 1, self.num_motifs, 1]), name='W_conv2')
+        b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name='b_conv2')
+        h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
+                               strides=[1, 1, 1, 1], padding='SAME')
+        n_hidden = config.get('lstm_size', 20)
+        W_out = tf.Variable(tf.random_normal([n_hidden, 1]), name='W_hidden')
+        b_out = tf.Variable(tf.constant(0.001, shape=[1]), name='b_hidden')
+        h_input = tf.squeeze(tf.nn.relu(h_conv2 + b_conv2), axis=[3], name='lstm_input')
+        lstm_cell = tf.contrib.rnn.LSTMCell(n_hidden, forget_bias=1.0, num_proj=1)
+        outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32)
+        # seq_current = tf.shape(outputs)[1]
+        # lstm_output_layer = tf.reshape((tf.matmul(tf.reshape(outputs,[-1,n_hidden]),W_out)+b_out),[-1,seq_current,1])
+        h_final_max = tf.reduce_max(outputs, axis=[1, 2])
+        h_final_avg = tf.reduce_mean(outputs, axis=[1, 2])
+        W_final = tf.Variable(tf.random_normal([2, 1], stddev=0.1))
+        b_final = tf.Variable(tf.constant(0.001, shape=[]))
+        h_final = tf.squeeze(tf.matmul(tf.stack([h_final_max, h_final_avg], axis=1), W_final) + b_final)
+
+        # h_final = tf.squeeze(
+        #     tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1]), axis=[1]),
+        #               W_out) + b_out)
+
+        cost_batch = tf.square(h_final - y_true)
+        self._cost = cost = tf.reduce_mean(cost_batch, name='cost')
+        norm_w = (tf.reduce_sum(tf.abs(W_conv1)) + tf.reduce_sum(tf.abs(W_conv2)) + tf.reduce_sum(tf.abs(W_out)))
+        optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
+
+        self._train_op = optimizer.minimize(cost + norm_w * lam_model)
+        self._predict_op = h_final
+        self.lstm_output_layer = outputs
+        self.lstm_state_layer = state
+        self.lstm_scalar_weight = W_out
+        self.lstm_scalar_bias = b_out
+
+    def initialize(self, session):
+        session.run(self._init_op)
+
+    @property
+    def input(self):
+        return self._input
+
+    @property
+    def config(self):
+        return self._config
+
+    @property
+    def cost(self):
+        return self._cost
+
+    @property
+    def train_op(self):
+        return self._train_op
+
+    @property
+    def predict_op(self):
+        return self._predict_op
+
+    @property
+    def x(self):
+        return self._x
+
+    @property
+    def y_true(self):
+        return self._y_true
+
 class Deepbind_RNN_struct_model(object):
     """The deepbind_RNN model with structure"""
 
@@ -794,6 +885,8 @@ def Deepbind_model(config, input, model_type):
         return Deepbind_RNN_struct_model(config, input)
     elif model_type == 'RNN':
         return Deepbind_RNN_model(config, input)
+    elif model_type == 'RNN_struct_track':
+        return Deepbind_RNN_struct_track_model(config, input)
 
 
 # #
@@ -879,7 +972,9 @@ def run_clip_epoch_shorter(session, model, input_data, config):
     fetches['predictions'] = model.predict_op
     for step in range(Nbatch):
         # if input_data.end_pos[step] -input_data.start_pos[step] >=40:
-        feed_dict[model.x] = input_data.data[step:step + 1, input_data.start_pos[step]:input_data.end_pos[step] + 1, :]
+        input_sequence = input_data.data[step:step + 1, input_data.start_pos[step]:input_data.end_pos[step] + 1, :]
+        # feed_dict[model.x] = np.concatenate([input_sequence, np.zeros([1,5,9])], axis=1)
+        feed_dict[model.x] = input_sequence
         # else:
         # feed_dict[model.x] = input_data.data[step:step + 1, input_data.start_pos[step]:input_data.start_pos[step]+40, :]
         vals = session.run(fetches, feed_dict)
@@ -1298,6 +1393,8 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
     infile_structB = open('../data/rnac/combined_profile_rnacB.txt')
     structures_A = []
     structures_B = []
+    seq_len_A = []
+    seq_len_B = []
     seq_len_train = 41
     num_struct_classes = 5
 
@@ -1326,11 +1423,13 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
             target_train.append(target)
             exp_ids_train.append(line_seq.split('\t')[1].strip())
             seq_len_train = max(seq_len_train, len(seq))
+            seq_len_A.append(len(seq))
         else:
             seq_test.append(seq)
             target_test.append(target)
             exp_ids_test.append(line_seq.split('\t')[1].strip())
             seq_len_test = max(seq_len_test, len(seq))
+            seq_len_B.append(len(seq))
 
     iter_train = 0
     seq_length = max(seq_len_test, seq_len_train)
@@ -1425,7 +1524,9 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
              test_cases=test_cases,
              structures_train=structures_train,
              structures_test=structures_test,
-             seq_length=seq_length)
+             seq_length=seq_length,
+             train_seq_len=seq_len_A,
+             test_seq_len=seq_len_B)
 
 
 def load_data_rnac2009(protein_name):
@@ -1662,8 +1763,8 @@ def load_data_clipseq_shorter(protein_name):
 
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:
-        # if True:
-        if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
+        if True:
+            # if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2013([protein_name])
         return np.load('../data/rnac/npz_archives/' + str(protein_name) + '.npz')
@@ -1759,6 +1860,8 @@ def generate_configs(num_calibrations, model_type, flag='small'):
     if model_type=='RNN_struct':
         return generate_configs_RNN(num_calibrations, flag)
     if model_type == 'RNN':
+        return generate_configs_RNN(num_calibrations, flag)
+    if model_type == 'RNN_struct_track':
         return generate_configs_RNN(num_calibrations, flag)
 
 def summarize(save_path='../results_final/'):
@@ -2008,7 +2111,7 @@ def summarize(save_path='../results_final/'):
                     'RNCMPT00099',
                     'RNCMPT00009']
     print("[*] Updating result summary")
-    model_list = ['CNN_struct', 'CNN', 'RNN_struct', 'RNN']
+    model_list = ['CNN_struct', 'CNN', 'RNN_struct', 'RNN', 'RNN_struct_track']
     result_file = open(save_path+'summary.tsv', 'w')
     heading = 'Protein\t' + '\t'.join(model_list) + '\n'
     result_file.write(heading)
