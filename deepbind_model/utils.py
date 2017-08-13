@@ -577,17 +577,11 @@ class Deepbind_RNN_struct_track_model(object):
         h_input = tf.squeeze(tf.nn.relu(h_conv2 + b_conv2), axis=[3], name='lstm_input')
         lstm_cell = tf.contrib.rnn.LSTMCell(n_hidden, forget_bias=1.0, num_proj=1)
         outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32)
-        # seq_current = tf.shape(outputs)[1]
-        # lstm_output_layer = tf.reshape((tf.matmul(tf.reshape(outputs,[-1,n_hidden]),W_out)+b_out),[-1,seq_current,1])
         h_final_max = tf.reduce_max(outputs, axis=[1, 2])
         h_final_avg = tf.reduce_mean(outputs, axis=[1, 2])
         W_final = tf.Variable(tf.random_normal([2, 1], stddev=0.1))
         b_final = tf.Variable(tf.constant(0.001, shape=[]))
         h_final = tf.squeeze(tf.matmul(tf.stack([h_final_max, h_final_avg], axis=1), W_final) + b_final)
-
-        # h_final = tf.squeeze(
-        #     tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1]), axis=[1]),
-        #               W_out) + b_out)
 
         cost_batch = tf.square(h_final - y_true)
         self._cost = cost = tf.reduce_mean(cost_batch, name='cost')
@@ -663,9 +657,6 @@ class Deepbind_RNN_struct_model(object):
         h_input = tf.squeeze(tf.nn.relu(h_conv2 + b_conv2), axis=[3], name='lstm_input')
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
         outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32)
-        # seq_current = tf.shape(outputs)[1]
-        # lstm_output_layer = tf.reshape((tf.matmul(tf.reshape(outputs,[-1,n_hidden]),W_out)+b_out),[-1,seq_current,1])
-        # h_final = tf.reduce_max(lstm_output_layer, axis=[1,2])
         h_final = tf.squeeze(
             tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1]), axis=[1]),
                       W_out) + b_out)

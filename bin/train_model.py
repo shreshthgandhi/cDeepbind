@@ -64,7 +64,7 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations, 
                     if np.isnan(num):
                         test_cost_filtered[count] = np.inf
                     else:
-                        test_cost_filtered[count] = test_cost[count]
+                        test_cost_filtered[count] = test_cost[count, -1]
                 best_model_idx = np.argmin(test_cost_filtered[i * num_final_runs:(i + 1) * num_final_runs])
 
                 abs_best_model_idx = i * num_final_runs + best_model_idx
