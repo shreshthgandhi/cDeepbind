@@ -1754,13 +1754,11 @@ def load_data_clipseq_shorter(protein_name):
 
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:
-        if True:
-            # if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
+        if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2013([protein_name])
         return np.load('../data/rnac/npz_archives/' + str(protein_name) + '.npz')
     else:
-        # if True:
         if not (os.path.isfile('../data/rnac_2009/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2009(protein_name)
