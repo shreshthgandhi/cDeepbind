@@ -61,8 +61,8 @@ class Deepbind_no_struct_input(object):
         self.seq_length = int(seq_length)
         self.training_cases = self.training_data.shape[0]
         self.test_cases = self.test_data.shape[0]
-        self.training_seq_len = inf['train_seq_len']
-        self.test_seq_len = inf['test_seq_len']
+        # self.training_seq_len = inf['train_seq_len']
+        # self.test_seq_len = inf['test_seq_len']
 
 
 class Deepbind_struct_input(object):
@@ -113,8 +113,8 @@ class Deepbind_struct_input(object):
         self.seq_length = int(seq_length)
         self.training_cases = self.training_data.shape[0]
         self.test_cases = self.test_data.shape[0]
-        self.training_seq_len = inf['train_seq_len']
-        self.test_seq_len = inf['test_seq_len']
+        # self.training_seq_len = inf['train_seq_len']
+        # self.test_seq_len = inf['test_seq_len']
 
 def Deepbind_input(input_config,inf,model,validation=False,fold_id=1):
     if 'struct' in model or 'STRUCT' in model:
@@ -1506,6 +1506,13 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
     labels_training[train_ind] = train_clamp
     labels_test[test_ind] = test_clamp
 
+    # Remove this part to train only on set A
+    structures_train = np.append([structures_train, structures_test], axis=0)
+    data_one_hot_training = np.append([data_one_hot_training, data_one_hot_test], axis=0)
+    labels_training = np.append([labels_training, labels_test], axis=0)
+    training_cases = training_cases + test_cases
+    ##############
+
 
     save_target = "../data/rnac/npz_archives/" +str(target_id_list[0])
     np.savez(save_target, data_one_hot_training=data_one_hot_training,
@@ -1516,8 +1523,7 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
              structures_train=structures_train,
              structures_test=structures_test,
              seq_length=seq_length,
-             train_seq_len=seq_len_A,
-             test_seq_len=seq_len_B)
+             )
 
 
 def load_data_rnac2009(protein_name):
@@ -1754,7 +1760,8 @@ def load_data_clipseq_shorter(protein_name):
 
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:
-        if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
+        if True:
+            # if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2013([protein_name])
         return np.load('../data/rnac/npz_archives/' + str(protein_name) + '.npz')
