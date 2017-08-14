@@ -1507,9 +1507,9 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
     labels_test[test_ind] = test_clamp
 
     # Remove this part to train only on set A
-    structures_train = np.append([structures_train, structures_test], axis=0)
-    data_one_hot_training = np.append([data_one_hot_training, data_one_hot_test], axis=0)
-    labels_training = np.append([labels_training, labels_test], axis=0)
+    structures_train = np.concatenate([structures_train, structures_test], axis=0)
+    data_one_hot_training = np.concatenate([data_one_hot_training, data_one_hot_test], axis=0)
+    labels_training = np.concatenate([labels_training, labels_test], axis=0)
     training_cases = training_cases + test_cases
     ##############
 
