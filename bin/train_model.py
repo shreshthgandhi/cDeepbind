@@ -46,12 +46,12 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations, 
 
     with tf.Graph().as_default():
         for i, model_type in enumerate(model_testing_list):
-            input_data[model_type] = utils.Deepbind_input(input_config, inf, model_type, validation=False)
+            input_data[model_type] = utils.model_input(input_config, inf, model_type, validation=False)
             for runs in range(num_final_runs):
                 with tf.variable_scope('model' + str(runs + i * num_final_runs)):
-                    models.append(utils.Deepbind_model(best_config[model_type],
-                                                       input_data[model_type],
-                                                       model_type))
+                    models.append(utils.model(best_config[model_type],
+                                              input_data[model_type],
+                                              model_type))
                     inputs.append(input_data[model_type])
         with tf.Session() as session:
             (test_cost, test_pearson) = \
@@ -78,7 +78,7 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations, 
                 target_protein, model_type, test_pearson[abs_best_model_idx, -1]))
                 utils.save_result(target_protein, model_type,
                                   model_size_flag, cost, pearson,
-                                  save_dir='../results_final',
+                                  save_dir='../results',
                                   model_index=abs_best_model_idx,
                                   model_dir=traindir[model_type])
 

@@ -12,9 +12,9 @@ def calibrate_model(target_protein, num_calibrations,
     configs = utils.generate_configs(num_calibrations, model_type, flag)
 
     inputs = []
-    inputs.append(utils.Deepbind_input(input_configuration, inf, model_type, validation=True, fold_id=1))
-    inputs.append(utils.Deepbind_input(input_configuration, inf, model_type, validation=True, fold_id=2))
-    inputs.append(utils.Deepbind_input(input_configuration, inf, model_type, validation=True, fold_id=3))
+    inputs.append(utils.model_input(input_configuration, inf, model_type, validation=True, fold_id=1))
+    inputs.append(utils.model_input(input_configuration, inf, model_type, validation=True, fold_id=2))
+    inputs.append(utils.model_input(input_configuration, inf, model_type, validation=True, fold_id=3))
 
     folds = configs[0]['folds']
     test_epochs = configs[0]['epochs'] // configs[0]['test_interval']
@@ -28,7 +28,7 @@ def calibrate_model(target_protein, num_calibrations,
             models = []
             for i in range(num_calibrations):
                 with tf.variable_scope('model' + str(i)):
-                    models.append(utils.Deepbind_model(configs[i], inputs[fold], model_type))
+                    models.append(utils.model(configs[i], inputs[fold], model_type))
             with tf.Session() as session:
                 (test_cost[fold, :, :],
                  test_pearson[fold, :, :]) = \
