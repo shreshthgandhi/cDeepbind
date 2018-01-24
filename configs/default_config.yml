@@ -1,7 +1,7 @@
-num_final_runs: 3
-model_testing_list: [RNN_struct_track]
-train_epochs: 15
+num_final_runs: 5
+model_testing_list: [RNN_struct]
+train_epochs: 20
 model_size_flag: large
-num_calibrations: 5
+num_calibrations: 3
 recalibrate: False
 summary_only: False

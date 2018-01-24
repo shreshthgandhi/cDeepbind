@@ -660,6 +660,7 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
                 # cost_test[j] += vals["cost"+str(j)]
                 # pearson_test[j] += stats.pearsonr(mbatchY_test, vals["predictions"+str(j)])[0]
         cost_test = cost_temp / Nbatch_test
+        pearson_ensemble = stats.pearsonr(input_data[0].test_labels, np.mean(test_scores, axis=0))
         for j in range(num_models):
             if isinstance(input_data, list):
                 pearson_test[j, :] = stats.pearsonr(input_data[j].test_labels, test_scores[j, :])
@@ -668,9 +669,9 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
         if verbose:
             best_model = np.argmin(cost_train)
             print (
-            "Epoch:%04d, Train cost(min)=%0.4f, Train pearson=%0.4f, Test cost(min)=%0.4f, Test Pearson(max)=%0.4f" %
+            "Epoch:%04d, Train cost(min)=%0.4f, Train pearson=%0.4f, Test cost(min)=%0.4f, Test Pearson(max)=%0.4f Ensemble Pearson=%0.4f" %
             (epoch + 1, cost_train[best_model], pearson_train[best_model][0], cost_test[best_model],
-             pearson_test[best_model][0]))
+             pearson_test[best_model][0],pearson_ensemble[0]))
             print(["%.4f" % p for p in pearson_test[:, 0]])
         if scores:
             return (cost_train, cost_test, pearson_train, pearson_test, training_scores, test_scores)
@@ -938,7 +939,7 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
     for line_struct in infile_structA:
         exp_id = line_struct.split('>')[1].strip()
         exp_id_notnan = exp_ids_train[iter_train]
-        probs = np.ones([num_struct_classes, seq_length]) * (1 / num_struct_classes)
+        probs = np.ones([num_struct_classes, seq_length]) * (1.0 / num_struct_classes)
         for i in range(5):
             values_line = infile_structA.next().strip()
             values = np.array(map(np.float32, values_line.split('\t')))
@@ -948,7 +949,7 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
             iter_train = iter_train + 1
     if iter_train < len(exp_ids_train):
         for i in range(iter_train, len(exp_ids_train)):
-            structures_A.append(np.ones([num_struct_classes, seq_length]) * (1 / num_struct_classes))
+            structures_A.append(np.ones([num_struct_classes, seq_length]) * (1.0 / num_struct_classes))
 
     for line_struct in infile_structB:
         exp_id = line_struct.split('>')[1].strip()
@@ -964,6 +965,7 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
     if iter_test < len(exp_ids_test):
         for i in range(iter_test, len(exp_ids_test)):
             structures_B.append(np.ones([num_struct_classes, seq_length]) * (1 / num_struct_classes))
+
 
     seq_train_enc = []
     for k in range(len(target_id_list)):
@@ -1004,8 +1006,8 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
     test_cases = data_one_hot_test.shape[0]
     # seq_length = data_one_hot_training.shape[1]
 
-    structures_train = np.array(structures_A, dtype=np.float32)
-    structures_test = np.array(structures_B, dtype=np.float32)
+    structures_train = np.array(structures_A, dtype=np.float32)-(1.0/ num_struct_classes)
+    structures_test = np.array(structures_B, dtype=np.float32)-(1.0/ num_struct_classes)
 
     train_remove = np.round(0.0005 * training_cases).astype(int)
     test_remove = np.round(0.0005 * test_cases).astype(int)
@@ -1144,7 +1146,7 @@ def load_data_clipseq(protein_name):
 
     with open(os.path.join(structure_folder, protein_name + '.train.positives_combined.txt'), 'r') as pos_struct_file:
         for line in pos_struct_file:
-            probs = np.ones([num_struct_classes, seq_len]) * (1 / num_struct_classes)
+            probs = np.ones([num_struct_classes, seq_len]) * (1.0 / num_struct_classes)
             for i in range(5):
                 values_line = pos_struct_file.next().strip()
                 values = np.array(map(np.float32, values_line.split('\t')))
@@ -1152,7 +1154,7 @@ def load_data_clipseq(protein_name):
             structs.append(probs)
     with open(os.path.join(structure_folder, protein_name + '.train.negatives_combined.txt'), 'r') as neg_struct_file:
         for line in neg_struct_file:
-            probs = np.ones([num_struct_classes, seq_len]) * (1 / num_struct_classes)
+            probs = np.ones([num_struct_classes, seq_len]) * (1.0 / num_struct_classes)
             for i in range(5):
                 values_line = neg_struct_file.next().strip()
                 values = np.array(map(np.float32, values_line.split('\t')))
@@ -1176,7 +1178,7 @@ def load_data_clipseq(protein_name):
     data_one_hot = np.array(seq_enc, np.float32)
     labels_array = np.array(labels, np.float32)
     total_cases = data_one_hot.shape[0]
-    structures = np.array(structs, np.float32)
+    structures = np.array(structs, np.float32) - (1.0/num_struct_classes)
     save_target = os.path.join('../data/GraphProt_CLIP_sequences/npz_archives', protein_name + '.npz')
     np.savez(save_target, data_one_hot=data_one_hot,
              labels=labels_array,
@@ -1224,7 +1226,7 @@ def load_data_clipseq_shorter(protein_name):
     seq_len = max([len(seq) for seq in seqs])
     with open(os.path.join(structure_folder, protein_name + '.ls.positives_combined'), 'r') as pos_struct_file:
         for line in pos_struct_file:
-            probs = np.ones([num_struct_classes, seq_len]) * (1 / num_struct_classes)
+            probs = np.ones([num_struct_classes, seq_len]) * (1.0 / num_struct_classes)
             for i in range(5):
                 values_line = pos_struct_file.next().strip()
                 values = np.array(map(np.float32, values_line.split('\t')))
@@ -1232,7 +1234,7 @@ def load_data_clipseq_shorter(protein_name):
             structs.append(probs)
     with open(os.path.join(structure_folder, protein_name + '.ls.negatives_combined'), 'r') as neg_struct_file:
         for line in neg_struct_file:
-            probs = np.ones([num_struct_classes, seq_len]) * (1 / num_struct_classes)
+            probs = np.ones([num_struct_classes, seq_len]) * (1.0 / num_struct_classes)
             for i in range(5):
                 values_line = neg_struct_file.next().strip()
                 values = np.array(map(np.float32, values_line.split('\t')))
@@ -1270,7 +1272,7 @@ def load_data_clipseq_shorter(protein_name):
 
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:
-        if True:
+        if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2013([protein_name])
         return np.load('../data/rnac/npz_archives/' + str(protein_name) + '.npz')
@@ -1315,7 +1317,7 @@ def generate_configs_RNN(num_calibrations, flag='small'):
         momentum = np.float32(np.random.uniform(0.95, 0.99))
         lam = np.float32(10 ** (np.random.uniform(-3, -6)))
         init_scale = np.float32(10 ** (np.random.uniform(-7, -3)))
-        minib = 100
+        minib = 1000
         test_interval = 10
         motif_len = 16
         num_motifs = np.random.choice([8, 16, 24])
