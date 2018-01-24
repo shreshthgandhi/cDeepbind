@@ -102,6 +102,8 @@ class StructInput(object):
             self.test_labels = labels_training[validation_index]
             self.training_struct = np.transpose(structures_training[train_index],[0,2,1])
             self.test_struct = np.transpose(structures_training[validation_index],[0,2,1])
+            self.training_lens = np.array(inf['seq_len_train'],np.int32)[train_index]
+            self.test_lens = np.array(inf['seq_len_test'],np.int32)[validation_index]
         else:
             self.training_data = data_one_hot_training[0:self.training_cases]
             self.test_data = data_one_hot_test[0:self.test_cases]
@@ -109,6 +111,9 @@ class StructInput(object):
             self.test_labels = labels_test[0:self.test_cases]
             self.training_struct = np.transpose(structures_training[0:self.training_cases],[0,2,1])
             self.test_struct = np.transpose(structures_test[0:self.test_cases],[0,2,1])
+            self.training_lens = np.array(inf['seq_len_train'], np.int32)[0:self.training_cases]
+            self.test_lens = np.array(inf['seq_len_test'], np.int32)[0:self.test_cases]
+
         self.training_data=np.append(self.training_data,self.training_struct,axis=2)
         self.test_data=np.append(self.test_data,self.test_struct,axis=2)
         self.seq_length = int(seq_length)
@@ -380,6 +385,7 @@ class RnnStructModel(object):
         self._init_op = tf.global_variables_initializer()
         self._x = x = tf.placeholder(tf.float32, shape=[None, None, 9], name='One_hot_data')
         self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
+        self.seq_lens = tf.placeholder(tf.int32, shape=[None], name='seq_lens')
         x_image = tf.expand_dims(x, 2)
 
         W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 9, self.num_motifs], stddev=0.01), name='W_Conv1')
@@ -397,10 +403,12 @@ class RnnStructModel(object):
         b_out = tf.Variable(tf.constant(0.001, shape=[1]), name='b_hidden')
         h_input = tf.squeeze(tf.nn.relu(h_conv2 + b_conv2), axis=[3], name='lstm_input')
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
-        outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32)
-        h_final = tf.squeeze(
-            tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1]), axis=[1]),
-                      W_out) + b_out)
+        outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32,sequence_length=self.seq_lens)
+        last_step = self.extract_axis_1(outputs, self.seq_lens-1)
+        h_final = tf.reduce_sum(tf.matmul(last_step,W_out)+b_out, axis=1)
+        # h_final = tf.squeeze(
+        #     tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1]), axis=[1]),
+        #               W_out) + b_out)
 
         cost_batch = tf.square(h_final - y_true)
         self._cost = cost = tf.reduce_mean(cost_batch, name='cost')
@@ -416,6 +424,13 @@ class RnnStructModel(object):
 
     def initialize(self, session):
         session.run(self._init_op)
+
+    def extract_axis_1(self,data, ind):
+        batch_range = tf.range(tf.shape(data)[0])
+        indices = tf.stack([batch_range, ind], axis=1)
+        res = tf.gather_nd(data, indices)
+        return res
+
 
     @property
     def input(self):
@@ -606,6 +621,7 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
             for i,(model,input) in enumerate(zip(models,input_data)):
                 feed_dict[model.x] = input.training_data[(minib * step): (minib * (step + 1)), :, :]
                 feed_dict[model.y_true] = input.training_labels[(minib * step): (minib * (step + 1))]
+                feed_dict[model.seq_lens] = input.training_lens[(minib*step): minib*(step+1)]
                 fetches["cost" + str(i)] = model.cost
                 if train:
                     fetches["eval_op" + str(i)] = model.train_op
@@ -615,6 +631,7 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
             for i, model in enumerate(models):
                 feed_dict[model.x] = input_data.training_data[(minib * step): (minib * (step + 1)), :, :]
                 feed_dict[model.y_true] = input_data.training_labels[(minib * step): (minib * (step + 1))]
+                feed_dict[model.seq_lens] = input_data.training_lens[(minib * step): minib * (step + 1)]
                 fetches["cost"+str(i)] = model.cost
                 if train:
                     fetches["eval_op" +str(i)] = model.train_op
@@ -640,12 +657,14 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
                 for i, (model, input) in enumerate(zip(models, input_data)):
                     feed_dict[model.x] = input.test_data[(minib * step): (minib * (step + 1)), :, :]
                     feed_dict[model.y_true] = input.test_labels[(minib * step): (minib * (step + 1))]
+                    feed_dict[model.seq_lens] = input.test_lens[(minib * step): minib * (step + 1)]
                     fetches["cost" + str(i)] = model.cost
                     fetches["predictions" + str(i)] = model.predict_op
             else:
                 for i, model in enumerate(models):
                     feed_dict[model.x] = input_data.test_data[(minib * step): (minib * (step + 1)), :, :]
                     feed_dict[model.y_true] = input_data.test_labels[(minib * step): (minib * (step + 1))]
+                    feed_dict[model.seq_lens] = input_data.test_lens[(minib * step): minib * (step + 1)]
                     fetches["cost"+str(i)] = model.cost
                     fetches["predictions"+str(i)] = model.predict_op
             vals = session.run(fetches, feed_dict)
@@ -1004,7 +1023,7 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
     labels_test = np.array([i[0] for i in target_test], dtype=float)
     training_cases = data_one_hot_training.shape[0]
     test_cases = data_one_hot_test.shape[0]
-    # seq_length = data_one_hot_training.shape[1]
+    seq_length = data_one_hot_training.shape[1]
 
     structures_train = np.array(structures_A, dtype=np.float32)-(1.0/ num_struct_classes)
     structures_test = np.array(structures_B, dtype=np.float32)-(1.0/ num_struct_classes)
@@ -1034,6 +1053,8 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
              test_cases=test_cases,
              structures_train=structures_train,
              structures_test=structures_test,
+             seq_len_train=seq_len_A,
+             seq_len_test=seq_len_B,
              seq_length=seq_length,
              )
 

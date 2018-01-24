@@ -60,6 +60,7 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations, 
                                            early_stop=False)
             for i, model_type in enumerate(model_testing_list):
                 test_cost_filtered = np.zeros(test_cost[:, -1].shape)
+                #TODO save entire ensemble except for models with NAN pearson correlation
                 for count, num in enumerate(test_pearson[:, -1]):
                     if np.isnan(num):
                         test_cost_filtered[count] = np.inf
