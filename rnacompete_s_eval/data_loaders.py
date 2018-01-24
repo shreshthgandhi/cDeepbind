@@ -111,7 +111,7 @@ def load_data_rnac_s(path):
                 
     if not(os.path.exists(os.path.join(path,'npz_archives'))):
         os.makedirs(os.path.join(path,'npz_archives'))
-    save_path = os.path.join(path,'npz_archives','SLBP.npz')
+    save_path = os.path.join(path,'npz_archives','SLBP_rnacs.npz')
 
     np.savez(save_path,
              data_one_hot_training=data_one_hot_training,

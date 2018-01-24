@@ -1,6 +1,6 @@
 num_final_runs: 5
 model_testing_list: [RNN_struct]
-train_epochs: 15
+train_epochs: 30
 model_size_flag: large
 num_calibrations: 3
 recalibrate: False

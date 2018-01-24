@@ -65,6 +65,61 @@ class NoStructInput(object):
         # self.training_seq_len = inf['train_seq_len']
         # self.test_seq_len = inf['test_seq_len']
 
+class StructInputRNAcompeteS(object):
+    """The deepbind_CNN model input with structure"""
+
+    def __init__(self, config, inf, validation=False, fold_id=1):
+        self.folds = folds = config.folds
+        (data_one_hot_training, labels_training,
+         data_one_hot_test, labels_test,
+         structures_training, structures_test,
+         training_cases, test_cases,
+         seq_length) = (inf["data_one_hot_training"], inf["labels_training"],
+                        inf["data_one_hot_test"], inf["labels_test"],
+                        inf["structures_train"], inf["structures_test"],
+                        inf["training_cases"], inf["test_cases"],
+                        inf["seq_length"])
+        labels_training = (labels_training - np.mean(labels_training)) / np.sqrt(np.var(labels_training))
+        labels_test = (labels_test - np.mean(labels_test)) / np.sqrt(np.var(labels_test))
+        self.training_cases = int(training_cases * config.training_frac)
+        self.test_cases = int(test_cases * config.test_frac)
+        train_index = range(self.training_cases)
+        validation_index = range(self.test_cases)
+        if validation:
+            kf = KFold(n_splits=folds)
+            indices = kf.split(np.random.choice(training_cases, replace=False, size=self.training_cases))
+            check = 1
+            for train_idx, val_idx in indices:
+                if(check == fold_id):
+                    train_index = train_idx
+                    validation_index = val_idx
+                    break
+                check += 1
+            self.training_data = data_one_hot_training[train_index]
+            self.test_data = data_one_hot_training[validation_index]
+            self.training_labels = labels_training[train_index]
+            self.test_labels = labels_training[validation_index]
+            self.training_struct = np.transpose(structures_training[train_index],[0,2,1])
+            self.test_struct = np.transpose(structures_training[validation_index],[0,2,1])
+            self.training_lens = np.array(inf['seq_len_train'],np.int32)[train_index]
+            self.test_lens = np.array(inf['seq_len_test'],np.int32)[validation_index]
+        else:
+            self.training_data = data_one_hot_training[0:self.training_cases]
+            self.test_data = data_one_hot_test[0:self.test_cases]
+            self.training_labels = labels_training[0:self.training_cases]
+            self.test_labels = labels_test[0:self.test_cases]
+            self.training_struct = np.transpose(structures_training[0:self.training_cases],[0,2,1])
+            self.test_struct = np.transpose(structures_test[0:self.test_cases],[0,2,1])
+            self.training_lens = np.array(inf['seq_len_train'], np.int32)[0:self.training_cases]
+            self.test_lens = np.array(inf['seq_len_test'], np.int32)[0:self.test_cases]
+
+        self.training_data=np.append(self.training_data,self.training_struct,axis=2)
+        self.test_data=np.append(self.test_data,self.test_struct,axis=2)
+        self.seq_length = int(seq_length)
+        self.training_cases = self.training_data.shape[0]
+        self.test_cases = self.test_data.shape[0]
+
+
 
 class StructInput(object):
     """The deepbind_CNN model input with structure"""
@@ -119,9 +174,6 @@ class StructInput(object):
         self.seq_length = int(seq_length)
         self.training_cases = self.training_data.shape[0]
         self.test_cases = self.test_data.shape[0]
-        # self.training_seq_len = inf['train_seq_len']
-        # self.test_seq_len = inf['test_seq_len']
-
 
 def model_input(input_config, inf, model, validation=False, fold_id=1):
     if 'struct' in model or 'STRUCT' in model:
@@ -679,7 +731,10 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
                 # cost_test[j] += vals["cost"+str(j)]
                 # pearson_test[j] += stats.pearsonr(mbatchY_test, vals["predictions"+str(j)])[0]
         cost_test = cost_temp / Nbatch_test
-        pearson_ensemble = stats.pearsonr(input_data[0].test_labels, np.mean(test_scores, axis=0))
+        if isinstance(input_data,list):
+            pearson_ensemble = stats.pearsonr(input_data[0].test_labels, np.mean(test_scores, axis=0))
+        else:
+            pearson_ensemble = stats.pearsonr(input_data.test_labels, np.mean(test_scores, axis=0))
         for j in range(num_models):
             if isinstance(input_data, list):
                 pearson_test[j, :] = stats.pearsonr(input_data[j].test_labels, test_scores[j, :])
@@ -696,6 +751,170 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
             return (cost_train, cost_test, pearson_train, pearson_test, training_scores, test_scores)
         return (cost_train, cost_test, pearson_test[:, 0])
     return cost_train
+
+def run_epoch_parallel_rnacs(session, models, input_data, config, epoch, train=False, verbose=False, testing=False,
+                       scores=False):
+    if isinstance(input_data,list):
+        Nbatch_train = int(ceil(input_data[0].training_cases * 1.0 / config['minib']))
+        Nbatch_test = int(ceil(input_data[0].test_cases * 1.0 / config['minib']))
+
+        training_scores = np.zeros([len(models), input_data[0].training_cases])
+        test_scores = np.zeros([len(models), input_data[0].test_cases])
+    else:
+        Nbatch_train = int(ceil(input_data.training_cases * 1.0 / config['minib']))
+        Nbatch_test = int(ceil(input_data.test_cases * 1.0 / config['minib']))
+
+        training_scores = np.zeros([len(models), input_data.training_cases])
+        test_scores = np.zeros([len(models), input_data.test_cases])
+
+    minib = config['minib']
+    num_models = len(models)
+    cost_temp = np.zeros([num_models])
+    auc_train = np.zeros([num_models])
+
+    for step in range(Nbatch_train):
+        fetches = {}
+        feed_dict = {}
+        if isinstance(input_data,list):
+            for i,(model,input) in enumerate(zip(models,input_data)):
+                feed_dict[model.x] = input.training_data[(minib * step): (minib * (step + 1)), :, :]
+                feed_dict[model.y_true] = input.training_labels[(minib * step): (minib * (step + 1))]
+                feed_dict[model.seq_lens] = input.training_lens[(minib*step): minib*(step+1)]
+                fetches["cost" + str(i)] = model.cost
+                if train:
+                    fetches["eval_op" + str(i)] = model.train_op
+
+                fetches["predictions" + str(i)] = model.predict_op
+        else:
+            for i, model in enumerate(models):
+                feed_dict[model.x] = input_data.training_data[(minib * step): (minib * (step + 1)), :, :]
+                feed_dict[model.y_true] = input_data.training_labels[(minib * step): (minib * (step + 1))]
+                feed_dict[model.seq_lens] = input_data.training_lens[(minib * step): minib * (step + 1)]
+                fetches["cost"+str(i)] = model.cost
+                if train:
+                    fetches["eval_op" +str(i)] = model.train_op
+                fetches["predictions" + str(i)] = model.predict_op
+        vals = session.run(fetches, feed_dict)
+        for j in range(num_models):
+            cost_temp[j] += vals["cost"+str(j)]
+            training_scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
+    cost_train = cost_temp / Nbatch_train
+    for j in range(num_models):
+        if isinstance(input_data, list):
+            auc_train[j] = roc_auc_score(input_data[j].training_labels, training_scores[j, :])
+        else:
+            auc_train[j, :] = roc_auc_score(input_data.training_labels, training_scores[j, :])
+    cost_temp = np.zeros([num_models])
+    if testing or scores:
+        auc_test = np.zeros([num_models])
+        for step in range(Nbatch_test):
+            feed_dict = {}
+            fetches = {}
+
+            if isinstance(input_data, list):
+                for i, (model, input) in enumerate(zip(models, input_data)):
+                    feed_dict[model.x] = input.test_data[(minib * step): (minib * (step + 1)), :, :]
+                    feed_dict[model.y_true] = input.test_labels[(minib * step): (minib * (step + 1))]
+                    feed_dict[model.seq_lens] = input.test_lens[(minib * step): minib * (step + 1)]
+                    fetches["cost" + str(i)] = model.cost
+                    fetches["predictions" + str(i)] = model.predict_op
+            else:
+                for i, model in enumerate(models):
+                    feed_dict[model.x] = input_data.test_data[(minib * step): (minib * (step + 1)), :, :]
+                    feed_dict[model.y_true] = input_data.test_labels[(minib * step): (minib * (step + 1))]
+                    feed_dict[model.seq_lens] = input_data.test_lens[(minib * step): minib * (step + 1)]
+                    fetches["cost"+str(i)] = model.cost
+                    fetches["predictions"+str(i)] = model.predict_op
+            vals = session.run(fetches, feed_dict)
+
+            for j in range(num_models):
+                cost_temp[j] += vals["cost" + str(j)]
+                test_scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
+                # if isinstance(input_data,list):
+                #     mbatchY_test = input_data[i].test_labels[(minib * step): (minib * (step + 1))]
+                # else:
+                #     mbatchY_test = input_data.test_labels[(minib * step): (minib * (step + 1))]
+                # cost_test[j] += vals["cost"+str(j)]
+                # pearson_test[j] += stats.pearsonr(mbatchY_test, vals["predictions"+str(j)])[0]
+        cost_test = cost_temp / Nbatch_test
+        if isinstance(input_data,list):
+            auc_ensemble = roc_auc_score(input_data[0].test_labels, np.mean(test_scores, axis=0))
+        else:
+            auc_ensemble = roc_auc_score(input_data.test_labels, np.mean(test_scores, axis=0))
+        for j in range(num_models):
+            if isinstance(input_data, list):
+                auc_test[j] = roc_auc_score(input_data[j].test_labels, test_scores[j, :])
+            else:
+                auc_test[j] = roc_auc_score(input_data.test_labels, test_scores[j, :])
+        if verbose:
+            best_model = np.argmin(cost_train)
+            print (
+            "Epoch:%04d, Train cost(min)=%0.4f, Train AUC=%0.4f, Test cost(min)=%0.4f, Test AUC(max)=%0.4f Ensemble AUC=%0.4f" %
+            (epoch + 1, cost_train[best_model], auc_train[best_model], cost_test[best_model],
+             auc_test[best_model],auc_ensemble))
+            print(["%.4f" % p for p in auc_test[:]])
+        if scores:
+            return (cost_train, cost_test, auc_train, auc_test, training_scores, test_scores)
+        return (cost_train, cost_test, auc_test)
+    return cost_train
+
+# def run_epoch_parallel_rnacs(session, models, input_data, config, epoch, train=False, verbose=False, testing=False,
+#                        scores=False):
+#     Nbatch_train = int(ceil(input_data.training_cases * 1.0 / config['minib']))
+#     Nbatch_test = int(ceil(input_data.test_cases * 1.0 / config['minib']))
+#
+#     training_scores = np.zeros([len(models), input_data.training_cases])
+#     test_scores = np.zeros([len(models), input_data.test_cases])
+#     minib = config['minib']
+#     num_models = len(models)
+#     cost_temp = np.zeros([num_models])
+#     auc_train = np.zeros([num_models])
+#     for step in range(Nbatch_train):
+#         fetches = {}
+#         feed_dict ={}
+#         for i, model in enumerate(models):
+#             feed_dict[model.x] = input_data.training_data[(minib * step): (minib * (step + 1)), :, :]
+#             feed_dict[model.y_true] = input_data.training_labels[(minib * step): (minib * (step + 1))]
+#             feed_dict[model.seq_lens] = input_data.training_lens[(minib * step): minib * (step + 1)]
+#             fetches["cost" + str(i)] = model.cost
+#             if train:
+#                 fetches["eval_op" + str(i)] = model.train_op
+#             fetches["predictions" + str(i)] = model.predict_op
+#         vals = session.run(fetches, feed_dict)
+#         for j in range(num_models):
+#             cost_temp[j] += vals["cost"+str(j)]
+#             training_scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
+#     cost_train = cost_temp / Nbatch_train
+#     for j in range(num_models):
+#         auc_train[j] = roc_auc_score(input_data.training_labels,training_scores[j,:])
+#     cost_temp = np.zeros([num_models])
+#     if testing or scores:
+#         auc_test = np.zeros([num_models,2])
+#         for step in range(Nbatch_test):
+#             feed_dict = {}
+#             fetches = {}
+#             for i, model in enumerate(models):
+#                 feed_dict[model.x] = input_data.test_data[(minib * step): (minib * (step + 1)), :, :]
+#                 feed_dict[model.y_true] = input_data.test_labels[(minib * step): (minib * (step + 1))]
+#                 feed_dict[model.seq_lens] = input_data.test_lens[(minib * step): minib * (step + 1)]
+#                 fetches["cost" + str(i)] = model.cost
+#                 fetches["predictions" + str(i)] = model.predict_op
+#             vals = session.run(fetches, feed_dict)
+#             for j in range(num_models):
+#                 cost_temp[j] += vals["cost" + str(j)]
+#                 test_scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
+#         cost_test = cost_temp / Nbatch_test
+#         auc_ensemble = roc_auc_score(input_data.test_labels, np.mean(test_scores, axis=0))
+#         for j in range(num_models):
+#             auc_test[j] = roc_auc_score(input_data.test_labels, test_scores[j,:])
+#         if verbose:
+#             best_model = np.argmin(cost_train)
+#             print(
+#                 "Epoch:%04d, Train cost(min)=%0.4f, Train pearson=%0.4f, Test cost(min)=%0.4f, Test Pearson(max)=%0.4f Ensemble Pearson=%0.4f" %
+#                 (epoch + 1, cost_train[best_model], auc_train[best_model], cost_test[best_model],
+#                  auc_test[best_model], auc_ensemble))
+#             print(["%.4f" % p for p in auc_test])
+
 
 def train_model_parallel(session, config, models, input_data, early_stop = False):
     """Trains a list of models in parallel. Expects a list of inputs of equal length as models. Config file is u """
@@ -720,6 +939,30 @@ def train_model_parallel(session, config, models, input_data, early_stop = False
     cost_test = np.transpose(cost_test,[1,0])
     pearson_test = np.transpose(pearson_test,[1,0])
     return (cost_test,pearson_test)
+
+def train_model_parallel_rnacs(session, config, models, input_data, early_stop = False):
+    """Trains a list of models in parallel. Expects a list of inputs of equal length as models. Config file is u """
+    if early_stop:
+        epochs = config['early_stop_epochs']
+    else:
+        epochs = config['epochs']
+    test_epochs = epochs // config['test_interval']
+    num_models = len(models)
+    cost_train = np.zeros([test_epochs, num_models])
+    cost_test = np.zeros([test_epochs, num_models])
+    auc_test = np.zeros([test_epochs, num_models])
+    session.run(tf.global_variables_initializer())
+    for i in range(epochs):
+        _ = run_epoch_parallel_rnacs(session, models, input_data, config, i, train=True)
+        if i % config['test_interval'] == 0:
+            step = i //config['test_interval']
+            (cost_train[step], cost_test[step], auc_test[step]) = \
+            run_epoch_parallel_rnacs(session, models, input_data, config, i, train=False,
+                               verbose=True, testing = True)
+
+    cost_test = np.transpose(cost_test,[1,0])
+    auc_test = np.transpose(auc_test,[1,0])
+    return (cost_test,auc_test)
 
 
 def compute_gradient(session, model, input_data, config):
@@ -1291,12 +1534,142 @@ def load_data_clipseq_shorter(protein_name):
     print("[*] Finished loading data for " + protein_name)
 
 
+def load_data_rnac_s(path):
+    pos_file = open(os.path.join(path, 'input_seq.fa'))
+    neg_file = open(os.path.join(path, 'bg_input_seq.fa'))
+    seq_pos = []
+    seq_neg = []
+    seq_lens_pos = []
+    labels_pos = []
+    labels_neg = []
+    seq_lens_neg = []
+    struct_pos = []
+    struct_neg = []
+    struct_pos_file = open(os.path.join(path, 'input_seq_combined.txt'))
+    struct_neg_file = open(os.path.join(path, 'bg_input_seq_combined.txt'))
+    num_struct_classes = 5
+
+    for line in pos_file:
+        seq = pos_file.next().strip()
+        seq_pos.append(seq)
+        seq_lens_pos.append(len(seq))
+        labels_pos.append(1.0)
+    for line in neg_file:
+        seq = neg_file.next().strip()
+        seq_neg.append(seq)
+        seq_lens_neg.append(len(seq))
+        labels_neg.append(0.0)
+    assert len(seq_pos) == len(seq_neg)
+
+    seq_len_pad_pos = np.max(seq_lens_pos)
+    seq_len_pad_neg = np.max(seq_lens_neg)
+    for line in struct_pos_file:
+        probs = np.ones([num_struct_classes, seq_len_pad_pos]) * (1.0 / num_struct_classes)
+        for i in range(5):
+            values_line = struct_pos_file.next().strip()
+            values = np.array(map(float, values_line.split('\t')))
+            probs[i, 0:values.shape[0]] = values
+        struct_pos.append(probs)
+
+    for line in struct_neg_file:
+        probs = np.ones([num_struct_classes, seq_len_pad_pos]) * (1.0 / num_struct_classes)
+        for i in range(5):
+            values_line = struct_neg_file.next().strip()
+            values = np.array(map(np.float32, values_line.split('\t')))
+            probs[i, 0:values.shape[0]] = values
+        struct_neg.append(probs)
+
+    assert len(struct_neg) == len(struct_pos)
+    assert seq_len_pad_pos == seq_len_pad_neg
+    assert len(struct_neg) == len(seq_neg)
+
+    seq_enc_pos = np.ones((len(seq_pos), seq_len_pad_pos, 4)) * 0.25
+    for i, case in enumerate(seq_pos):
+        for j, nuc in enumerate(case):
+            if nuc == 'A':
+                seq_enc_pos[i, j] = np.array([1, 0, 0, 0])
+            elif nuc == 'G':
+                seq_enc_pos[i, j] = np.array([0, 1, 0, 0])
+            elif nuc == 'C':
+                seq_enc_pos[i, j] = np.array([0, 0, 1, 0])
+            elif nuc == 'U':
+                seq_enc_pos[i, j] = np.array([0, 0, 0, 1])
+
+    seq_enc_neg = np.ones((len(seq_neg), seq_len_pad_neg, 4)) * 0.25
+    for i, case in enumerate(seq_neg):
+        for j, nuc in enumerate(case):
+            if nuc == 'A':
+                seq_enc_neg[i, j] = np.array([1, 0, 0, 0])
+            elif nuc == 'G':
+                seq_enc_neg[i, j] = np.array([0, 1, 0, 0])
+            elif nuc == 'C':
+                seq_enc_neg[i, j] = np.array([0, 0, 1, 0])
+            elif nuc == 'U':
+                seq_enc_neg[i, j] = np.array([0, 0, 0, 1])
+    seq_enc_pos -= 0.25
+    seq_enc_neg -= 0.25
+    struct_pos = np.array(struct_pos, dtype=np.float32) - (1.0 / num_struct_classes)
+    struct_neg = np.array(struct_neg, dtype=np.float32) - (1.0 / num_struct_classes)
+    train_size = int(0.9 * len(seq_pos))
+    test_size = len(seq_pos) - train_size
+
+    data_one_hot_training = []
+    data_one_hot_test = []
+    labels_training = []
+    labels_test = []
+    structures_train = []
+    structures_test = []
+    seq_len_train = []
+    seq_len_test = []
+
+    for i in range(train_size):
+        data_one_hot_training.append(seq_enc_pos[i])
+        data_one_hot_training.append(seq_enc_neg[i])
+        structures_train.append(struct_pos[i])
+        structures_train.append(struct_neg[i])
+        seq_len_train.append(seq_lens_pos[i])
+        seq_len_train.append(seq_lens_neg[i])
+        labels_training.append(labels_pos[i])
+        labels_training.append(labels_neg[i])
+
+    for i in range(train_size, len(seq_pos)):
+        data_one_hot_test.append(seq_enc_pos[i])
+        data_one_hot_test.append(seq_enc_neg[i])
+        structures_test.append(struct_pos[i])
+        structures_test.append(struct_neg[i])
+        seq_len_test.append(seq_lens_pos[i])
+        seq_len_test.append(seq_lens_neg[i])
+        labels_test.append(labels_pos[i])
+        labels_test.append(labels_neg[i])
+
+    if not (os.path.exists(os.path.join(path, 'npz_archives'))):
+        os.makedirs(os.path.join(path, 'npz_archives'))
+    save_path = os.path.join(path, 'npz_archives', 'SLBP_rnacs.npz')
+
+    np.savez(save_path,
+             data_one_hot_training=data_one_hot_training,
+             labels_training=labels_training,
+             data_one_hot_test=data_one_hot_test,
+             labels_test=labels_test, training_cases=train_size,
+             test_cases=test_size,
+             structures_train=structures_train,
+             structures_test=structures_test,
+             seq_len_train=seq_len_train,
+             seq_len_test=seq_len_test,
+             seq_length=seq_len_pad_pos,
+             )
+
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:
         if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2013([protein_name])
         return np.load('../data/rnac/npz_archives/' + str(protein_name) + '.npz')
+    elif protein_name == 'SLBP_rnacs':
+        if not (os.path.isfile('../data/rnac_s/npz_archives/' + str(protein_name)+'.npz')):
+            print("[!] Processing input for " + protein_name)
+            load_data_rnac_s('../data/rnac_s')
+        return np.load(('../data/rnac_s/npz_archives/' + str(protein_name)+'.npz'))
     else:
         if not (os.path.isfile('../data/rnac_2009/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)

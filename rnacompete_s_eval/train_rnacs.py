@@ -55,7 +55,7 @@ def main(target_protein, model_size_flag, model_testing_list, num_calibrations, 
                     inputs.append(input_data[model_type])
         with tf.Session() as session:
             (test_cost, test_pearson) = \
-                utils.train_model_parallel(session, best_config[model_type],
+                utils.train_model_parallel_rnacs(session, best_config[model_type],
                                            models, inputs,
                                            early_stop=False)
             for i, model_type in enumerate(model_testing_list):
@@ -106,4 +106,3 @@ if __name__ == "__main__":
             print("Time left is" + str(elapsed_time * ((len(args.protein) / (i + 1))-1)))
     average_time = (time() - start_time) / len(args.protein)
     print("Finished process in %.4f seconds per protein" % (average_time))
-    utils.summarize()
