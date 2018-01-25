@@ -1964,11 +1964,11 @@ def summarize(train_config):
     for protein in protein_list:
         result_file.write(protein)
         for model in model_list:
-            if os.path.isfile(save_path + protein + '_' + model + '_large.npz'):
-                read_file = np.load(save_path + protein + '_' + model + '_large.npz')
+            if os.path.isfile(os.path.join( save_path,protein + '_' + model + '.npz')):
+                read_file = np.load(os.path.join( save_path,protein + '_' + model + '.npz'))
                 result_file.write('\t' + str(read_file['pearson']))
                 count += 1
             else:
                 result_file.write('\t')
         result_file.write('\n')
-    print("[*] Update complete, %d records updated" % (count))
+    print("[*] Update complete, %d record(s) updated" % (count))
