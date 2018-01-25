@@ -169,11 +169,17 @@ class StructInput(object):
             self.training_lens = np.array(inf['seq_len_train'], np.int32)[0:self.training_cases]
             self.test_lens = np.array(inf['seq_len_test'], np.int32)[0:self.test_cases]
 
+
         self.training_data=np.append(self.training_data,self.training_struct,axis=2)
         self.test_data=np.append(self.test_data,self.test_struct,axis=2)
         self.seq_length = int(seq_length)
         self.training_cases = self.training_data.shape[0]
         self.test_cases = self.test_data.shape[0]
+        train_shuffle = np.random.permutation(np.arange(self.training_data.shape[0]))
+        self.training_data = self.training_data[train_shuffle]
+        self.training_labels = self.training_labels[train_shuffle]
+        self.training_lens = self.training_lens[train_shuffle]
+
 
 def model_input(input_config, inf, model, validation=False, fold_id=1):
     if 'struct' in model or 'STRUCT' in model:
@@ -732,9 +738,11 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
                 # pearson_test[j] += stats.pearsonr(mbatchY_test, vals["predictions"+str(j)])[0]
         cost_test = cost_temp / Nbatch_test
         if isinstance(input_data,list):
-            pearson_ensemble = stats.pearsonr(input_data[0].test_labels, np.mean(test_scores, axis=0))
+            pearson_ensemble = stats.pearsonr(input_data[0].test_labels, np.mean(test_scores, axis=0))[0]
+            cost_ensemble = np.mean(np.square(input_data[0].test_labels - np.mean(test_scores, axis=0)))
         else:
-            pearson_ensemble = stats.pearsonr(input_data.test_labels, np.mean(test_scores, axis=0))
+            pearson_ensemble = stats.pearsonr(input_data.test_labels, np.mean(test_scores, axis=0))[0]
+            cost_ensemble = np.mean(np.square(input_data.test_labels-np.mean(test_scores, axis=0)))
         for j in range(num_models):
             if isinstance(input_data, list):
                 pearson_test[j, :] = stats.pearsonr(input_data[j].test_labels, test_scores[j, :])
@@ -743,13 +751,13 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
         if verbose:
             best_model = np.argmin(cost_train)
             print (
-            "Epoch:%04d, Train cost(min)=%0.4f, Train pearson=%0.4f, Test cost(min)=%0.4f, Test Pearson(max)=%0.4f Ensemble Pearson=%0.4f" %
+            "Epoch:%04d, Train cost(min)=%0.4f, Train pearson=%0.4f, Test cost(min)=%0.4f, Test Pearson(max)=%0.4f Ensemble Pearson=%0.4f Ensemble Cost=%0.4f" %
             (epoch + 1, cost_train[best_model], pearson_train[best_model][0], cost_test[best_model],
-             pearson_test[best_model][0],pearson_ensemble[0]))
+             pearson_test[best_model][0],pearson_ensemble, cost_ensemble))
             print(["%.4f" % p for p in pearson_test[:, 0]])
         if scores:
             return (cost_train, cost_test, pearson_train, pearson_test, training_scores, test_scores)
-        return (cost_train, cost_test, pearson_test[:, 0])
+        return (cost_train, cost_test, pearson_test[:, 0], pearson_ensemble, cost_ensemble)
     return cost_train
 
 def run_epoch_parallel_rnacs(session, models, input_data, config, epoch, train=False, verbose=False, testing=False,
@@ -858,87 +866,42 @@ def run_epoch_parallel_rnacs(session, models, input_data, config, epoch, train=F
         return (cost_train, cost_test, auc_test)
     return cost_train
 
-# def run_epoch_parallel_rnacs(session, models, input_data, config, epoch, train=False, verbose=False, testing=False,
-#                        scores=False):
-#     Nbatch_train = int(ceil(input_data.training_cases * 1.0 / config['minib']))
-#     Nbatch_test = int(ceil(input_data.test_cases * 1.0 / config['minib']))
-#
-#     training_scores = np.zeros([len(models), input_data.training_cases])
-#     test_scores = np.zeros([len(models), input_data.test_cases])
-#     minib = config['minib']
-#     num_models = len(models)
-#     cost_temp = np.zeros([num_models])
-#     auc_train = np.zeros([num_models])
-#     for step in range(Nbatch_train):
-#         fetches = {}
-#         feed_dict ={}
-#         for i, model in enumerate(models):
-#             feed_dict[model.x] = input_data.training_data[(minib * step): (minib * (step + 1)), :, :]
-#             feed_dict[model.y_true] = input_data.training_labels[(minib * step): (minib * (step + 1))]
-#             feed_dict[model.seq_lens] = input_data.training_lens[(minib * step): minib * (step + 1)]
-#             fetches["cost" + str(i)] = model.cost
-#             if train:
-#                 fetches["eval_op" + str(i)] = model.train_op
-#             fetches["predictions" + str(i)] = model.predict_op
-#         vals = session.run(fetches, feed_dict)
-#         for j in range(num_models):
-#             cost_temp[j] += vals["cost"+str(j)]
-#             training_scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
-#     cost_train = cost_temp / Nbatch_train
-#     for j in range(num_models):
-#         auc_train[j] = roc_auc_score(input_data.training_labels,training_scores[j,:])
-#     cost_temp = np.zeros([num_models])
-#     if testing or scores:
-#         auc_test = np.zeros([num_models,2])
-#         for step in range(Nbatch_test):
-#             feed_dict = {}
-#             fetches = {}
-#             for i, model in enumerate(models):
-#                 feed_dict[model.x] = input_data.test_data[(minib * step): (minib * (step + 1)), :, :]
-#                 feed_dict[model.y_true] = input_data.test_labels[(minib * step): (minib * (step + 1))]
-#                 feed_dict[model.seq_lens] = input_data.test_lens[(minib * step): minib * (step + 1)]
-#                 fetches["cost" + str(i)] = model.cost
-#                 fetches["predictions" + str(i)] = model.predict_op
-#             vals = session.run(fetches, feed_dict)
-#             for j in range(num_models):
-#                 cost_temp[j] += vals["cost" + str(j)]
-#                 test_scores[j, (minib * step): (minib * (step + 1))] = vals['predictions' + str(j)]
-#         cost_test = cost_temp / Nbatch_test
-#         auc_ensemble = roc_auc_score(input_data.test_labels, np.mean(test_scores, axis=0))
-#         for j in range(num_models):
-#             auc_test[j] = roc_auc_score(input_data.test_labels, test_scores[j,:])
-#         if verbose:
-#             best_model = np.argmin(cost_train)
-#             print(
-#                 "Epoch:%04d, Train cost(min)=%0.4f, Train pearson=%0.4f, Test cost(min)=%0.4f, Test Pearson(max)=%0.4f Ensemble Pearson=%0.4f" %
-#                 (epoch + 1, cost_train[best_model], auc_train[best_model], cost_test[best_model],
-#                  auc_test[best_model], auc_ensemble))
-#             print(["%.4f" % p for p in auc_test])
 
-
-def train_model_parallel(session, config, models, input_data, early_stop = False):
+def train_model_parallel(session, train_config, models, input_data,epochs, early_stop = False, savedir=None,saver=None):
     """Trains a list of models in parallel. Expects a list of inputs of equal length as models. Config file is u """
-    if early_stop:
-        epochs = config['early_stop_epochs']
-    else:
-        epochs = config['epochs']
-    test_epochs = epochs // config['test_interval']
+    # if early_stop:
+    #     epochs = config['early_stop_epochs']
+    # else:
+    #     epochs = config['epochs']
+    # epochs = train_config['train_epochs']
     num_models = len(models)
-    cost_train = np.zeros([test_epochs, num_models])
-    cost_test = np.zeros([test_epochs, num_models])
-    pearson_test = np.zeros([test_epochs, num_models])
-    session.run(tf.global_variables_initializer())
+    cost_train = np.zeros([epochs, num_models])
+    cost_test = np.zeros([epochs, num_models])
+    pearson_test = np.zeros([epochs, num_models])
+    pearson_ensemble = np.zeros([epochs])
+    cost_ensemble = np.zeros([epochs])
+    pearson_max = -np.inf
+
     for i in range(epochs):
-        _ = run_epoch_parallel(session, models, input_data, config, i, train=True)
-        if i % config['test_interval'] == 0:
-            step = i //config['test_interval']
-            (cost_train[step], cost_test[step], pearson_test[step]) = \
-            run_epoch_parallel(session, models, input_data, config, i, train=False,
-                               verbose=True, testing = True)
+        _ = run_epoch_parallel(session, models, input_data, train_config, i, train=True)
+        (cost_train[i], cost_test[i], pearson_test[i], pearson_ensemble[i], cost_ensemble[i]) = \
+        run_epoch_parallel(session, models, input_data, train_config, i, train=False,
+                           verbose=True, testing = True)
+        if early_stop:
+            if pearson_ensemble[i] > pearson_max:
+                best_epoch = i
+                saver.save(session, savedir)
+                print("[*] Saving early stop checkpoint")
 
     cost_test = np.transpose(cost_test,[1,0])
     pearson_test = np.transpose(pearson_test,[1,0])
-    return (cost_test,pearson_test)
+    if early_stop :
+        pearson_ensemble = pearson_ensemble[best_epoch]
+        cost_ensemble = cost_ensemble[best_epoch]
+    else:
+        pearson_ensemble = pearson_ensemble[-1]
+        cost_ensemble = cost_ensemble[-1]
+    return (cost_test,pearson_test, cost_ensemble, pearson_ensemble)
 
 def train_model_parallel_rnacs(session, config, models, input_data, early_stop = False):
     """Trains a list of models in parallel. Expects a list of inputs of equal length as models. Config file is u """
@@ -1052,28 +1015,33 @@ def score_model_parallel(session, config, models, input_data):
     return (training_scores, test_scores, pearson_training, pearson_test)
 
 
+#
+# def create_config_dict(**kwargs):
+#     config = {}
+#     config.update(kwargs)
+#     config['folds'] = 3
+#     if config['flag']=='large':
+#         config['epochs'] = 15
+#         config['early_stop_epochs'] = 15
+#         config['test_interval'] = 1
+#     elif config['flag'] == 'medium':
+#         config['epochs'] = 10
+#         config['early_stop_epochs'] = 10
+#         config['test_interval'] = 1
+#     else:
+#         config['epochs'] = 10
+#         config['early_stop_epochs'] = 10
+#         config['test_interval'] = 1
+#     return config
 
-def create_config_dict(**kwargs):
-    config = {}
-    config.update(kwargs)
-    config['folds'] = 3
-    if config['flag']=='large':
-        config['epochs'] = 15
-        config['early_stop_epochs'] = 15
-        config['test_interval'] = 1
-    elif config['flag'] == 'medium':
-        config['epochs'] = 10
-        config['early_stop_epochs'] = 10
-        config['test_interval'] = 1
-    else:
-        config['epochs'] = 10
-        config['early_stop_epochs'] = 10
-        config['test_interval'] = 1
-    return config
 
-
-def save_calibration(protein, model_type,flag, config,new_cost,new_pearson, save_dir):
-    file_name = os.path.join(save_dir,protein+'_'+model_type+'_'+flag+'.npz')
+def save_calibration(train_config, best_config):
+    protein = train_config['protein']
+    model_type = train_config['model_type']
+    save_dir = train_config['hp_dir']
+    file_name = os.path.join(save_dir,protein+'_'+model_type+'.npz')
+    new_cost = best_config['cost']
+    new_pearson = best_config['pearson']
     save_new = True
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -1083,47 +1051,46 @@ def save_calibration(protein, model_type,flag, config,new_cost,new_pearson, save
             save_new = False
 
     if (save_new):
-        print("[*] Updating best calibration for %s %s %s"%(protein,model_type,flag))
-        kwargs = {'pearson': new_pearson, 'cost': new_cost}
-        for key in config.keys():
-            kwargs[key] = config[key]
-        np.savez(file_name, **kwargs)
+        print("[*] Updating best calibration for %s %s"%(protein,model_type))
+        np.savez(file_name, **best_config)
     else:
-        print("[*] Retaining existing calibration for %s %s %s" % (protein, model_type, flag))
+        print("[*] Retaining existing calibration for %s %s" % (protein, model_type))
 
 
-def save_result(protein, model_type, flag, new_cost, new_pearson, save_dir, model_index, model_dir):
+def save_result(train_config,new_cost, new_pearson, ensemble_size, model_dir):
+    protein = train_config['protein']
+    model_type = train_config['model_type']
+    save_dir = train_config['result_dir']
     import yaml
-    file_name = os.path.join(save_dir, protein + '_' + model_type + '_' + flag + '.npz')
+    file_name = os.path.join(save_dir, protein + '_' + model_type + '.npz')
     save_new = True
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     if (os.path.isfile(file_name)):
         file = np.load(file_name)
-        if new_cost >= file['cost']:
+        if new_pearson <= file['pearson']:
             save_new = False
 
     if (save_new):
-        print("[*] Updating best result for %s %s %s" % (protein, model_type, flag))
+        print("[*] Updating best result for %s %s" % (protein, model_type))
         np.savez(file_name,
                  cost=new_cost,
                  pearson=new_pearson
                  )
-        result_dict = {'cost': float(new_cost), 'pearson': float(new_pearson), 'model_index': int(model_index),
+        result_dict = {'cost': float(new_cost), 'pearson': float(new_pearson), 'ensemble_size': int(ensemble_size),
                        'model_dir': str(model_dir)}
-        yaml.dump(result_dict, open(os.path.join(save_dir, protein + '_' + model_type + '_' + flag + '.yml'),'w'))
+        yaml.dump(result_dict, open(os.path.join(save_dir, protein + '_' + model_type + '.yml'),'w'))
 
-def load_calibration(protein, model_type, flag, save_dir):
-    file_name = os.path.join(save_dir, protein+'_'+model_type+'_'+flag+'.npz')
+def load_calibration(train_config):
+    file_name = os.path.join(train_config['hp_dir'], train_config['protein']+'_'+train_config['model_type']+'.npz')
     if not os.path.isfile(file_name):
-        print("[!] Model is not pre-calibrated!")
+        # print("[!] Model is not pre-calibrated!")
         return False
-    print("[*] Loading existing best calibration for %s %s %s" % (protein,model_type,flag))
+    print("[*] Loading existing best calibration for %s %s" % (train_config['protein'], train_config['model_type']))
     inf = np.load(file_name)
-    loaded_config = {'flag':flag}
+    loaded_config = {}
     loaded_config.update(inf)
-    config_new = create_config_dict(**loaded_config)
-    return config_new
+    return loaded_config
 
 
 
@@ -1142,10 +1109,10 @@ class input_config(object):
             self.test_frac = 1
 
 
-def load_data_rnac2013(target_id_list=None, fold_filter='A'):
+def load_data_rnac2013(protein_name):
     # type: (object, object) -> object
-    infile_seq = open('../data/rnac/sequences.tsv')
-    infile_target = open('../data/rnac/targets.tsv')
+    infile_seq = open('data/rnac/sequences.tsv')
+    infile_target = open('data/rnac/targets.tsv')
     seq_train = []
     seq_test = []
     target_train = []
@@ -1153,8 +1120,8 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
     exp_ids_train = []
     exp_ids_test = []
 
-    infile_structA = open('../data/rnac/combined_profile_rnacA.txt')
-    infile_structB = open('../data/rnac/combined_profile_rnacB.txt')
+    infile_structA = open('data/rnac/combined_profile_rnacA.txt')
+    infile_structB = open('data/rnac/combined_profile_rnacB.txt')
     structures_A = []
     structures_B = []
     seq_len_A = []
@@ -1166,23 +1133,24 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
     seq_len_test = 0
 
     target_names = infile_target.readline().split()
-    if target_id_list is None:
-        target_id_list = target_names
-    target_cols_idx = np.zeros(len(target_id_list), dtype=int)
-    # target_cols_idx = target_names.index(target_id_list)
-
-    for i in range(len(target_id_list)):
-        target_cols_idx[i] = target_names.index(target_id_list[i])
+    target_col = target_names.index(protein_name)
+    # if target_id_list is None:
+    #     target_id_list = target_names
+    # target_cols_idx = np.zeros(len(target_id_list), dtype=int)
+    # # target_cols_idx = target_names.index(target_id_list)
+    #
+    # for i in range(len(target_id_list)):
+    #     target_cols_idx[i] = target_names.index(target_id_list[i])
     infile_seq.readline()
     for line_seq in infile_seq:
         seq = line_seq.split('\t')[2].strip()
         line_target = infile_target.readline()
-        target = [line_target.split('\t')[i] for i in target_cols_idx]
+        target = [line_target.split('\t')[target_col]]
         fold = line_seq.split('\t')[0].strip()
         target_np = np.array(target, dtype=float)
         if np.any(np.isnan(target_np)):
             continue
-        if fold in fold_filter:
+        if fold == 'A':
             seq_train.append(seq)
             target_train.append(target)
             exp_ids_train.append(line_seq.split('\t')[1].strip())
@@ -1230,36 +1198,37 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
 
 
     seq_train_enc = []
-    for k in range(len(target_id_list)):
-        seq_enc = np.ones((len(seq_train), seq_length, 4)) * 0.25
-        for i, case in enumerate(seq_train):
-            for j, nuc in enumerate(case):
-                if nuc == 'A':
-                    seq_enc[i, j] = np.array([1, 0, 0, 0])
-                elif nuc == 'G':
-                    seq_enc[i, j] = np.array([0, 1, 0, 0])
-                elif nuc == 'C':
-                    seq_enc[i, j] = np.array([0, 0, 1, 0])
-                elif nuc == 'U':
-                    seq_enc[i, j] = np.array([0, 0, 0, 1])
-        seq_enc -= 0.25
-        seq_train_enc.append(seq_enc)
+    # for k in range(len(target_id_list)):
+    seq_enc = np.ones((len(seq_train), seq_length, 4)) * 0.25
+    for i, case in enumerate(seq_train):
+        for j, nuc in enumerate(case):
+            if nuc == 'A':
+                seq_enc[i, j] = np.array([1, 0, 0, 0])
+            elif nuc == 'G':
+                seq_enc[i, j] = np.array([0, 1, 0, 0])
+            elif nuc == 'C':
+                seq_enc[i, j] = np.array([0, 0, 1, 0])
+            elif nuc == 'U':
+                seq_enc[i, j] = np.array([0, 0, 0, 1])
+    seq_enc -= 0.25
+    seq_train_enc.append(seq_enc)
 
     seq_test_enc = []
-    for k in range(len(target_id_list)):
-        seq_enc = np.ones((len(seq_test), seq_length, 4)) * 0.25
-        for i, case in enumerate(seq_test):
-            for j, nuc in enumerate(case):
-                if nuc == 'A':
-                    seq_enc[i, j] = np.array([1, 0, 0, 0])
-                elif nuc == 'G':
-                    seq_enc[i, j] = np.array([0, 1, 0, 0])
-                elif nuc == 'C':
-                    seq_enc[i, j] = np.array([0, 0, 1, 0])
-                elif nuc == 'U':
-                    seq_enc[i, j] = np.array([0, 0, 0, 1])
-        seq_enc = seq_enc - 0.25
-        seq_test_enc.append(seq_enc)
+    # for k in range(len(target_id_list)):
+    seq_enc = np.ones((len(seq_test), seq_length, 4)) * 0.25
+    for i, case in enumerate(seq_test):
+        for j, nuc in enumerate(case):
+            if nuc == 'A':
+                seq_enc[i, j] = np.array([1, 0, 0, 0])
+            elif nuc == 'G':
+                seq_enc[i, j] = np.array([0, 1, 0, 0])
+            elif nuc == 'C':
+                seq_enc[i, j] = np.array([0, 0, 1, 0])
+            elif nuc == 'U':
+                seq_enc[i, j] = np.array([0, 0, 0, 1])
+    seq_enc = seq_enc - 0.25
+    seq_test_enc.append(seq_enc)
+
     data_one_hot_training = np.array(seq_train_enc[0])
     data_one_hot_test = np.array(seq_test_enc[0])
     labels_training = np.array([i[0] for i in target_train], dtype=float)
@@ -1288,7 +1257,7 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
     ##############
 
 
-    save_target = "../data/rnac/npz_archives/" +str(target_id_list[0])
+    save_target = "/data/rnac/npz_archives/" +protein_name
     np.savez(save_target, data_one_hot_training=data_one_hot_training,
              labels_training=labels_training,
              data_one_hot_test=data_one_hot_test,
@@ -1303,8 +1272,8 @@ def load_data_rnac2013(target_id_list=None, fold_filter='A'):
 
 
 def load_data_rnac2009(protein_name):
-    data_folder = '../data/rnac_2009/full'
-    structure_folder = '../data/rnac_2009/full/structure_annotations'
+    data_folder = 'data/rnac_2009/full'
+    structure_folder = 'data/rnac_2009/full/structure_annotations'
     training_seqs = []
     training_scores = []
     training_structs = []
@@ -1379,7 +1348,7 @@ def load_data_rnac2009(protein_name):
     labels_test = np.array(test_scores, dtype=np.float32)
     training_cases = data_one_hot_training.shape[0]
     test_cases = data_one_hot_test.shape[0]
-    save_target = os.path.join('../data/rnac_2009/npz_archives/', protein_name + '.npz')
+    save_target = os.path.join('data/rnac_2009/npz_archives/', protein_name + '.npz')
     np.savez(save_target, data_one_hot_training=data_one_hot_training,
              labels_training=labels_training,
              data_one_hot_test=data_one_hot_test,
@@ -1392,8 +1361,8 @@ def load_data_rnac2009(protein_name):
 
 
 def load_data_clipseq(protein_name):
-    data_folder = '../data/GraphProt_CLIP_sequences'
-    structure_folder = '../data/GraphProt_CLIP_sequences/structure_annotations/' + protein_name
+    data_folder = 'data/GraphProt_CLIP_sequences'
+    structure_folder = 'data/GraphProt_CLIP_sequences/structure_annotations/' + protein_name
     structs = []
     num_struct_classes = 5
     seqs = []
@@ -1443,7 +1412,7 @@ def load_data_clipseq(protein_name):
     labels_array = np.array(labels, np.float32)
     total_cases = data_one_hot.shape[0]
     structures = np.array(structs, np.float32) - (1.0/num_struct_classes)
-    save_target = os.path.join('../data/GraphProt_CLIP_sequences/npz_archives', protein_name + '.npz')
+    save_target = os.path.join('data/GraphProt_CLIP_sequences/npz_archives', protein_name + '.npz')
     np.savez(save_target, data_one_hot=data_one_hot,
              labels=labels_array,
              seq_length=seq_len,
@@ -1453,8 +1422,8 @@ def load_data_clipseq(protein_name):
 
 
 def load_data_clipseq_shorter(protein_name):
-    data_folder = '../data/GraphProt_CLIP_sequences'
-    structure_folder = '../data/GraphProt_CLIP_sequences/structure_annotations/' + protein_name
+    data_folder = 'data/GraphProt_CLIP_sequences'
+    structure_folder = 'data/GraphProt_CLIP_sequences/structure_annotations/' + protein_name
     structs = []
     num_struct_classes = 5
     seqs = []
@@ -1523,7 +1492,7 @@ def load_data_clipseq_shorter(protein_name):
     labels_array = np.array(labels, np.float32)
     total_cases = data_one_hot.shape[0]
     structures = np.array(structs, np.float32)
-    save_target = os.path.join('../data/GraphProt_CLIP_sequences/npz_archives', protein_name + '.npz')
+    save_target = os.path.join('data/GraphProt_CLIP_sequences/npz_archives', protein_name + '.npz')
     np.savez(save_target, data_one_hot=data_one_hot,
              labels=labels_array,
              seq_length=seq_len,
@@ -1661,23 +1630,23 @@ def load_data_rnac_s(path):
 
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:
-        if not (os.path.isfile('../data/rnac/npz_archives/' + str(protein_name) + '.npz')):
+        if not (os.path.isfile('data/rnac/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
-            load_data_rnac2013([protein_name])
-        return np.load('../data/rnac/npz_archives/' + str(protein_name) + '.npz')
+            load_data_rnac2013(protein_name)
+        return np.load('data/rnac/npz_archives/' + str(protein_name) + '.npz')
     elif protein_name == 'SLBP_rnacs':
-        if not (os.path.isfile('../data/rnac_s/npz_archives/' + str(protein_name)+'.npz')):
+        if not (os.path.isfile('data/rnac_s/npz_archives/' + str(protein_name)+'.npz')):
             print("[!] Processing input for " + protein_name)
-            load_data_rnac_s('../data/rnac_s')
-        return np.load(('../data/rnac_s/npz_archives/' + str(protein_name)+'.npz'))
+            load_data_rnac_s('data/rnac_s')
+        return np.load(('data/rnac_s/npz_archives/' + str(protein_name)+'.npz'))
     else:
-        if not (os.path.isfile('../data/rnac_2009/npz_archives/' + str(protein_name) + '.npz')):
+        if not (os.path.isfile('data/rnac_2009/npz_archives/' + str(protein_name) + '.npz')):
             print("[!] Processing input for " + protein_name)
             load_data_rnac2009(protein_name)
-        return np.load('../data/rnac_2009/npz_archives/' + str(protein_name) + '.npz')
+        return np.load('data/rnac_2009/npz_archives/' + str(protein_name) + '.npz')
 
 
-def generate_configs_CNN(num_calibrations, flag='small'):
+def generate_configs_CNN(num_calibrations):
     configs = []
     for i in range(num_calibrations):
         eta = np.float32(10 ** (np.random.uniform(-2, -6)))
@@ -1698,13 +1667,13 @@ def generate_configs_CNN(num_calibrations, flag='small'):
                        'pool_windows': pool_windows,
                        'batchnorm': batchnorm,
                        'final_pool': final_pool,
-                       'init_scale': init_scale, 'flag': flag}
+                       'init_scale': init_scale}
 
-        configs.append(create_config_dict(**temp_config))
+        configs.append(temp_config)
     return configs
 
 
-def generate_configs_RNN(num_calibrations, flag='small'):
+def generate_configs_RNN(num_calibrations):
     configs = []
     for i in range(num_calibrations):
         eta = np.float32(10 ** (np.random.uniform(-2, -6)))
@@ -1720,26 +1689,27 @@ def generate_configs_RNN(num_calibrations, flag='small'):
         temp_config = {'eta_model': eta, 'momentum_model': momentum, 'lam_model': lam, 'minib': minib,
                        'test_interval': test_interval, 'motif_len': motif_len,
                        'lstm_size': lstm_size,
-                       'num_motifs': num_motifs, 'init_scale': init_scale, 'flag': flag}
+                       'num_motifs': num_motifs, 'init_scale': init_scale}
 
-        configs.append(create_config_dict(**temp_config))
+        configs.append(temp_config)
     return configs
 
 
-def generate_configs(num_calibrations, model_type, flag='small'):
+def generate_configs(num_calibrations, model_type):
     if model_type=='CNN':
-        return generate_configs_CNN(num_calibrations, flag)
+        return generate_configs_CNN(num_calibrations)
     if model_type=='CNN_struct':
-        return generate_configs_CNN(num_calibrations, flag)
+        return generate_configs_CNN(num_calibrations)
     if model_type=='RNN_struct':
-        return generate_configs_RNN(num_calibrations, flag)
+        return generate_configs_RNN(num_calibrations)
     if model_type == 'RNN':
-        return generate_configs_RNN(num_calibrations, flag)
+        return generate_configs_RNN(num_calibrations)
     if model_type == 'RNN_struct_track':
-        return generate_configs_RNN(num_calibrations, flag)
+        return generate_configs_RNN(num_calibrations)
 
 
-def summarize(save_path='../results/'):
+def summarize(train_config):
+    save_path = train_config.get('result_dir','results')
     protein_list = ['Fusip', 'HuR', 'PTB', 'RBM4', 'SF2', 'SLM2', 'U1A', 'VTS1', 'YB1',
                     'RNCMPT00100',
                     'RNCMPT00101',

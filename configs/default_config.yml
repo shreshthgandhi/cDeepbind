@@ -1,7 +1,12 @@
 num_final_runs: 5
-model_testing_list: [RNN_struct]
-train_epochs: 30
-model_size_flag: large
-num_calibrations: 3
+model_type: RNN_struct
+train_epochs: 1
+hp_epochs: 10
+minib: 1000
+cv_folds: 3
+hp_dir: 'hyperparameters'
+result_dir: 'results'
+model_dir: 'models'
+num_calibrations: 5
 recalibrate: False
 summary_only: False
