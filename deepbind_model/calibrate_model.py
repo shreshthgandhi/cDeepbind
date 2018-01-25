@@ -7,11 +7,11 @@ import deepbind_model.utils as utils
 def calibrate_model(train_config):
     best_config = utils.load_calibration(train_config)
     if not(best_config):
-        print("[!] Model is not pre-calibrated!")
+        print("[!] Model for %s %s  is not pre-calibrated!"%(train_config['protein'],train_config['model_type']))
     elif not(train_config['recalibrate']):
         return best_config
     else:
-        print("[!] Recalibrating model")
+        print("[!] Recalibrating %s %s model"%(train_config['protein'],train_config['model_type']))
 
     target_protein = train_config['protein']
     num_calibrations = train_config.get('num_calibrations',5)
@@ -29,7 +29,7 @@ def calibrate_model(train_config):
     val_pearson = np.zeros([folds, num_calibrations, epochs])
 
     for fold in range(folds):
-        print("[*] Evaluating fold %d" % fold+1)
+        print("[*] Evaluating fold %d" % (fold+1))
         with tf.Graph().as_default():
             models = []
             for i in range(num_calibrations):

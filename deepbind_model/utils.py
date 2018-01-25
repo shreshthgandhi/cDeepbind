@@ -1257,7 +1257,7 @@ def load_data_rnac2013(protein_name):
     ##############
 
 
-    save_target = "/data/rnac/npz_archives/" +protein_name
+    save_target = "data/rnac/npz_archives/" +protein_name
     np.savez(save_target, data_one_hot_training=data_one_hot_training,
              labels_training=labels_training,
              data_one_hot_test=data_one_hot_test,
