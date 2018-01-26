@@ -751,8 +751,8 @@ def run_epoch_parallel(session, models, input_data, config, epoch, train=False, 
         if verbose:
             best_model = np.argmin(cost_train)
             print (
-            "Epoch:%04d, Train cost(min)=%0.4f, Train pearson=%0.4f, Test cost(min)=%0.4f, Test Pearson(max)=%0.4f Ensemble Pearson=%0.4f Ensemble Cost=%0.4f" %
-            (epoch + 1, cost_train[best_model], pearson_train[best_model][0], cost_test[best_model],
+            "Epoch:%04d, minib:%d,Train cost(min)=%0.4f, Train pearson=%0.4f, Test cost(min)=%0.4f, Test Pearson(max)=%0.4f Ensemble Pearson=%0.4f Ensemble Cost=%0.4f" %
+            (epoch + 1, minib,cost_train[best_model], pearson_train[best_model][0], cost_test[best_model],
              pearson_test[best_model][0],pearson_ensemble, cost_ensemble))
             print(["%.4f" % p for p in pearson_test[:, 0]])
         if scores:
@@ -877,9 +877,10 @@ def train_model_parallel(session, train_config, models, input_data,epochs, early
     cost_ensemble = np.zeros([epochs])
     pearson_max = -np.inf
     max_minib = train_config['minib']
-    num_batch_step = train_config.get('batch_increase_epoch', 3)
+    num_batch_step = train_config.get('batch_size_steps', 3)
     min_minib = max_minib // (2**(num_batch_step-1))
-    batch_sizes = [min_minib*(2**((num_batch_step*j)//15)) for j in range(epochs)]
+    batch_sizes = [min_minib*(2**((num_batch_step*j)//epochs)) for j in range(epochs)]
+    # batch_sizes = [max_minib for j in range(epochs)]
     for i in range(epochs):
         train_config['minib'] = batch_sizes[i]
         _ = run_epoch_parallel(session, models, input_data, train_config, i, train=True)
@@ -1117,6 +1118,12 @@ class input_config(object):
 
 def load_data_rnac2013(protein_name):
     # type: (object, object) -> object
+    if 'full' in protein_name:
+        protein_name = protein_name.split('_')[0]
+        full = True
+    else:
+        full = False
+
     infile_seq = open('data/rnac/sequences.tsv')
     infile_target = open('data/rnac/targets.tsv')
     seq_train = []
@@ -1256,10 +1263,14 @@ def load_data_rnac2013(protein_name):
     labels_test[test_ind] = test_clamp
 
     # Remove this part to train only on set A
-    # structures_train = np.concatenate([structures_train, structures_test], axis=0)
-    # data_one_hot_training = np.concatenate([data_one_hot_training, data_one_hot_test], axis=0)
-    # labels_training = np.concatenate([labels_training, labels_test], axis=0)
-    # training_cases = training_cases + test_cases
+    if full:
+        structures_train = np.concatenate([structures_train, structures_test], axis=0)
+        data_one_hot_training = np.concatenate([data_one_hot_training, data_one_hot_test], axis=0)
+        labels_training = np.concatenate([labels_training, labels_test], axis=0)
+        seq_len_A = np.concatenate([seq_len_A,seq_len_B], axis=0)
+        training_cases = training_cases + test_cases
+        protein_name = protein_name+'_full'
+
     ##############
 
 
