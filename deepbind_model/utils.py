@@ -876,9 +876,14 @@ def train_model_parallel(session, train_config, models, input_data,epochs, early
     pearson_ensemble = np.zeros([epochs])
     cost_ensemble = np.zeros([epochs])
     pearson_max = -np.inf
-
+    max_minib = train_config['minib']
+    num_batch_step = train_config.get('batch_increase_epoch', 3)
+    min_minib = max_minib // (2**(num_batch_step-1))
+    batch_sizes = [min_minib*(2**((num_batch_step*j)//15)) for j in range(epochs)]
     for i in range(epochs):
+        train_config['minib'] = batch_sizes[i]
         _ = run_epoch_parallel(session, models, input_data, train_config, i, train=True)
+        train_config['minib'] = max_minib
         (cost_train[i], cost_test[i], pearson_test[i], pearson_ensemble[i], cost_ensemble[i]) = \
         run_epoch_parallel(session, models, input_data, train_config, i, train=False,
                            verbose=True, testing = True)

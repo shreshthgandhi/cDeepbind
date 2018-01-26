@@ -37,6 +37,7 @@ def calibrate_model(train_config):
                     models.append(utils.model(configs[i], inputs[fold], model_type))
             with tf.Session() as session:
                 session.run(tf.global_variables_initializer())
+                train_config['minib'] = 100
                 (val_cost[fold, :, :],
                  val_pearson[fold, :, :],_,_) = \
                     utils.train_model_parallel(session, train_config, models, inputs[fold],epochs=epochs, early_stop=False)
