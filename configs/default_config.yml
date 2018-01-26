@@ -1,8 +1,8 @@
 num_final_runs: 5
 model_type: RNN_struct
 train_epochs: 15
-hp_epochs: 10
-minib: 1000
+hp_epochs: 50
+minib: 500
 cv_folds: 3
 hp_dir: 'hyperparameters'
 result_dir: 'results'

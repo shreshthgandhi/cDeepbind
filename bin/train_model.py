@@ -28,17 +28,19 @@ def main(train_config):
             with tf.variable_scope('model' + str(runs)):
                 models.append(utils.model(best_config,input_data, model_type))
                 inputs.append(input_data)
-            saver = tf.train.Saver()
         sv = tf.train.Supervisor(logdir=traindir)
         with sv.managed_session() as session:
-            # session.run(tf.global_variables_initializer())
             (test_cost, test_pearson, cost_ensemble, pearson_ensemble) = \
-                utils.train_model_parallel(session, best_config,
+                utils.train_model_parallel(session, train_config,
                                            models, inputs,
                                            epochs=train_config['train_epochs'],
                                            early_stop=True,
                                            savedir=os.path.join(traindir, target_protein + '_best_model.ckpt'),
                                            saver=sv.saver)
+            # (test_cost, test_pearson) = \
+            #     utils.train_model_parallel_rnacs(session, best_config,
+            #                                      models, inputs,
+            #                                      early_stop=False)
             # for i, model_type in enumerate(model_testing_list):
             # test_cost_filtered = np.zeros(test_cost[:, -1].shape)
             # #TODO save entire ensemble except for models with NAN pearson correlation

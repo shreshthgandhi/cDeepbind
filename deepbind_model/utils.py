@@ -869,11 +869,6 @@ def run_epoch_parallel_rnacs(session, models, input_data, config, epoch, train=F
 
 def train_model_parallel(session, train_config, models, input_data,epochs, early_stop = False, savedir=None,saver=None):
     """Trains a list of models in parallel. Expects a list of inputs of equal length as models. Config file is u """
-    # if early_stop:
-    #     epochs = config['early_stop_epochs']
-    # else:
-    #     epochs = config['epochs']
-    # epochs = train_config['train_epochs']
     num_models = len(models)
     cost_train = np.zeros([epochs, num_models])
     cost_test = np.zeros([epochs, num_models])
@@ -887,11 +882,15 @@ def train_model_parallel(session, train_config, models, input_data,epochs, early
         (cost_train[i], cost_test[i], pearson_test[i], pearson_ensemble[i], cost_ensemble[i]) = \
         run_epoch_parallel(session, models, input_data, train_config, i, train=False,
                            verbose=True, testing = True)
-        if early_stop:
+        if early_stop and not(i%5):
             if pearson_ensemble[i] > pearson_max:
                 best_epoch = i
                 saver.save(session, savedir)
                 print("[*] Saving early stop checkpoint")
+    if saver and(pearson_ensemble[i] > pearson_max):
+        best_epoch = i
+        saver.save(session, savedir)
+        print("[*] Saving checkpoint")
 
     cost_test = np.transpose(cost_test,[1,0])
     pearson_test = np.transpose(pearson_test,[1,0])
@@ -901,6 +900,9 @@ def train_model_parallel(session, train_config, models, input_data,epochs, early
     else:
         pearson_ensemble = pearson_ensemble[-1]
         cost_ensemble = cost_ensemble[-1]
+        if saver:
+            saver.save(session, savedir)
+            print("[*] Saving checkpoint")
     return (cost_test,pearson_test, cost_ensemble, pearson_ensemble)
 
 def train_model_parallel_rnacs(session, config, models, input_data, early_stop = False):
@@ -908,20 +910,19 @@ def train_model_parallel_rnacs(session, config, models, input_data, early_stop =
     if early_stop:
         epochs = config['early_stop_epochs']
     else:
-        epochs = config['epochs']
-    test_epochs = epochs // config['test_interval']
+        epochs = 15
+    test_epochs = 15
     num_models = len(models)
     cost_train = np.zeros([test_epochs, num_models])
     cost_test = np.zeros([test_epochs, num_models])
     auc_test = np.zeros([test_epochs, num_models])
-    session.run(tf.global_variables_initializer())
-    for i in range(epochs):
+    # session.run(tf.global_variables_initializer())
+    for i in range(15):
         _ = run_epoch_parallel_rnacs(session, models, input_data, config, i, train=True)
-        if i % config['test_interval'] == 0:
-            step = i //config['test_interval']
-            (cost_train[step], cost_test[step], auc_test[step]) = \
-            run_epoch_parallel_rnacs(session, models, input_data, config, i, train=False,
-                               verbose=True, testing = True)
+        step = i
+        (cost_train[step], cost_test[step], auc_test[step]) = \
+        run_epoch_parallel_rnacs(session, models, input_data, config, i, train=False,
+                           verbose=True, testing = True)
 
     cost_test = np.transpose(cost_test,[1,0])
     auc_test = np.transpose(auc_test,[1,0])
