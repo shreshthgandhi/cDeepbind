@@ -464,10 +464,6 @@ class RnnStructModel(object):
         outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32,sequence_length=self.seq_lens)
         last_step = self.extract_axis_1(outputs, self.seq_lens-1)
         h_final = tf.reduce_sum(tf.matmul(last_step,W_out)+b_out, axis=1)
-        # h_final = tf.squeeze(
-        #     tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1]), axis=[1]),
-        #               W_out) + b_out)
-
         cost_batch = tf.square(h_final - y_true)
         self._cost = cost = tf.reduce_mean(cost_batch, name='cost')
         norm_w = (tf.reduce_sum(tf.abs(W_conv1)) + tf.reduce_sum(tf.abs(W_conv2)) + tf.reduce_sum(tf.abs(W_out)))
@@ -1974,7 +1970,7 @@ def summarize(train_config):
                     'RNCMPT00009']
     print("[*] Updating result summary")
     model_list = ['CNN_struct', 'CNN', 'RNN_struct', 'RNN', 'RNN_struct_track']
-    result_file = open(save_path+'summary.tsv', 'w')
+    result_file = open(os.path.join(save_path,'summary.tsv'), 'w')
     heading = 'Protein\t' + '\t'.join(model_list) + '\n'
     result_file.write(heading)
     count = 0
