@@ -9,30 +9,34 @@ import deepbind_model.utils as utils
 
 
 def main(target_protein, model_type, evaluation_type, CLIPSEQ_experiment=None):
-    config = utils.load_calibration(target_protein, model_type, 'small', '../calibrations')
+    config = utils.load_calibration({'hp_dir':'hyperparameters','model_type':model_type,'protein':target_protein})
     if not (config):
         print("[!] No trained model to evaluate")
         print("[!] Exiting")
         return -1
-    result_file = yaml.load(open('../results/' + target_protein + '_' + model_type + '_large.yml'))
+    result_file = yaml.load(open('results/' + target_protein + '_' + model_type + '.yml'))
     model_dir = result_file['model_dir']
-    model_idx = result_file['model_index']
+    model_ensemble_size = result_file['ensemble_size']
+    # model_idx = result_file['model_index']
     if evaluation_type == 'CLIPSEQ':
-        inf = np.load('../data/GraphProt_CLIP_sequences/npz_archives/' + CLIPSEQ_experiment + '.npz')
+        assert CLIPSEQ_experiment
+        inf = np.load('data/GraphProt_CLIP_sequences/npz_archives/' + CLIPSEQ_experiment + '.npz')
         input_data = utils.ClipInputStruct(inf)
     else:
         inf = utils.load_data(target_protein)
         input_data = utils.model_input(utils.input_config('large'), inf, model_type, validation=False)
     with tf.Graph().as_default():
-        with tf.variable_scope('model' + str(model_idx)):
-            model = utils.model(config, input_data, model_type)
-        best_model_vars = tf.contrib.framework.get_variables(scope='model' + str(model_idx))
-        saver = tf.train.Saver(best_model_vars)
+        models = []
+        for i in range(model_ensemble_size):
+            with tf.variable_scope('model' + str(i)):
+                models.append(utils.model(config, input_data, model_type))
+        # best_model_vars = tf.contrib.framework.get_variables(scope='model' + str(model_idx))
+        saver = tf.train.Saver()
         with tf.Session() as sess:
             saver.restore(sess,
                           os.path.join(model_dir, target_protein + '_best_model.ckpt'))
             if evaluation_type == 'CLIPSEQ':
-                auc = utils.run_clip_epoch_shorter(sess, [model], input_data, config)
+                auc = utils.run_clip_epoch_shorter(sess, models, input_data, config)
                 print(target_protein, CLIPSEQ_experiment, auc)
                 result_dict = {'auc': float(auc)}
                 save_dir = '../results/'
@@ -43,11 +47,13 @@ def main(target_protein, model_type, evaluation_type, CLIPSEQ_experiment=None):
                                             target_protein + '_' + CLIPSEQ_experiment + '_' + model_type + '_updated' + '.yml'),
                                'w'))
             else:
-                (cost_train, cost_test, training_pearson, test_pearson, training_scores,
-                 test_scores) = utils.run_epoch_parallel(sess, [model], input_data, config, epoch=1, train=False,
-                                                         verbose=False, testing=True, scores=True)
+                (cost_train, cost_test, pearson_test, pearson_ensemble, cost_ensemble) = utils.run_epoch_parallel(sess, models, input_data, {'minib':2000}, epoch=1, train=False,
+                                                         verbose=False, testing=True, scores=False)
+                # (cost_train, cost_test, training_pearson, test_pearson, training_scores,
+                #  test_scores) = utils.run_epoch_parallel(sess, models, input_data, config, epoch=1, train=False,
+                #                                          verbose=False, testing=True, scores=True)
 
-                print("True pearson for %s is %f" % (target_protein, test_pearson[0, 0]))
+                print("True pearson for %s is %f" % (target_protein, pearson_ensemble))
 
 
 

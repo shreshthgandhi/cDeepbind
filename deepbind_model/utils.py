@@ -15,8 +15,16 @@ class ClipInputStruct(object):
          total_cases, seq_length, self.start_pos, self.end_pos) = (inf["data_one_hot"], inf["labels"],
                                                                    inf["structures"], inf["total_cases"],
                                                                    inf["seq_length"], inf['start_pos'], inf['end_pos'])
-        self.data = np.append(data_one_hot, np.transpose(structures, [0, 2, 1]), axis=2)
-        self.seq_len = seq_length
+        self.seq_length = self.end_pos-self.start_pos
+        max_len = np.max(self.seq_length)
+        data_array = np.zeros([data_one_hot.shape[0], max_len,9])
+        data_array[:,:,4:] = -0.2
+        structures = np.transpose(structures,[0,2,1])
+        for i in range(data_one_hot.shape[0]):
+            data_array[i,0:self.seq_length[i],:] = np.append(data_one_hot[i,self.start_pos[i]:self.end_pos[i],:],
+                                      structures[i,self.start_pos[i]:self.end_pos[i],:], axis=1)
+        self.data = data_array
+        self.seq_len = max_len
         self.total_cases = self.data.shape[0]
         self.labels = labels
 
@@ -53,17 +61,23 @@ class NoStructInput(object):
             self.test_data = data_one_hot_training[validation_index]
             self.training_labels = labels_training[train_index]
             self.test_labels = labels_training[validation_index]
+            self.training_lens = np.array(inf['seq_len_train'], np.int32)[train_index]
+            self.test_lens = np.array(inf['seq_len_test'], np.int32)[validation_index]
         else:
             self.training_data = data_one_hot_training[0:self.training_cases]
             self.test_data = data_one_hot_test[0:self.test_cases]
             self.training_labels = labels_training[0:self.training_cases]
             self.test_labels = labels_test[0:self.test_cases]
-#
+            self.training_lens = np.array(inf['seq_len_train'], np.int32)[0:self.training_cases]
+            self.test_lens = np.array(inf['seq_len_test'], np.int32)[0:self.test_cases]
+
         self.seq_length = int(seq_length)
         self.training_cases = self.training_data.shape[0]
         self.test_cases = self.test_data.shape[0]
-        # self.training_seq_len = inf['train_seq_len']
-        # self.test_seq_len = inf['test_seq_len']
+        train_shuffle = np.random.permutation(np.arange(self.training_data.shape[0]))
+        self.training_data = self.training_data[train_shuffle]
+        self.training_labels = self.training_labels[train_shuffle]
+        self.training_lens = self.training_lens[train_shuffle]
 
 class StructInputRNAcompeteS(object):
     """The deepbind_CNN model input with structure"""
@@ -120,7 +134,6 @@ class StructInputRNAcompeteS(object):
         self.test_cases = self.test_data.shape[0]
 
 
-
 class StructInput(object):
     """The deepbind_CNN model input with structure"""
 
@@ -169,7 +182,6 @@ class StructInput(object):
             self.training_lens = np.array(inf['seq_len_train'], np.int32)[0:self.training_cases]
             self.test_lens = np.array(inf['seq_len_test'], np.int32)[0:self.test_cases]
 
-
         self.training_data=np.append(self.training_data,self.training_struct,axis=2)
         self.test_data=np.append(self.test_data,self.test_struct,axis=2)
         self.seq_length = int(seq_length)
@@ -188,58 +200,50 @@ def model_input(input_config, inf, model, validation=False, fold_id=1):
         return NoStructInput(input_config, inf, validation, fold_id)
 
 
+
 class CnnModel(object):
-    """The deepbind_CNN model without structure"""
+    """The deepbind_CNN model with structure"""
 
     def __init__(self, config, input_):
         self._config = config
-        self._input = input_
-        self.weight_initializer = tf.truncated_normal_initializer(stddev=config['init_scale'])
-        self.rna_sequence = tf.placeholder(tf.float32, shape=[None, None, 4], name='input_sequence')
-        self.target_scores = tf.placeholder(tf.float32, shape=[None], name='target_scores')
-        self.target_scores_exp = tf.expand_dims(self.target_scores, 1)
-        conv_input = self.rna_sequence
-        for layer in range(config['num_conv_layers']):
-            if layer == (config['num_conv_layers'] - 1):
-                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=1,
-                                                    kernel_size=config['filter_lengths'][layer],
-                                                    strides=config['strides'][layer],
-                                                    padding='SAME', activation=None,
-                                                    kernel_initializer=self.weight_initializer,
-                                                    name='conv_layer_' + str(layer))
-            else:
-                self.conv_output = tf.layers.conv1d(inputs=conv_input, filters=config['num_filters'][layer],
-                                                    kernel_size=config['filter_lengths'][layer],
-                                                    strides=config['strides'][layer],
-                                                    padding='SAME', activation=tf.nn.relu,
-                                                    kernel_initializer=self.weight_initializer,
-                                                    name='conv_layer_' + str(layer))
+        eta_model = config['eta_model']
+        lam_model = config['lam_model']
+        self.motif_len = config['filter_lengths'][0]  # Tunable Motif length
+        self.num_motifs = config['num_filters'][0]  # Number of tunable motifs
+        self.motif_len2 = config['filter_lengths'][1]
+        self.num_motifs2 = config['num_filters'][1]
+        self._init_op = tf.global_variables_initializer()
+        self._x = x = tf.placeholder(tf.float32, shape=[None, None, 4], name='One_hot_data')
+        self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
+        self.seq_lens = tf.placeholder(tf.int32, shape=[None], name='seq_lens')
+        x_image = tf.expand_dims(x, 2)
+        W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 9, self.num_motifs], stddev=0.01), name='W_Conv1')
+        b_conv1 = tf.Variable(tf.constant(0.001, shape=[self.num_motifs]), name='b_conv1')
 
-            conv_input = self.conv_output
-        self.conv_output = tf.squeeze(self.conv_output, axis=2)
-        final_pool = config.get('final_pool', 'max')
-        if final_pool == 'max':
-            self.target_predictions = tf.reduce_max(self.conv_output, axis=[1], name='max_pool', keep_dims=True)
-        if final_pool == 'avg':
-            self.target_predictions = tf.reduce_mean(self.conv_output, axis=[1], name='avg_pool', keep_dims=True)
-        if final_pool == 'max_avg':
-            max_pool = tf.reduce_max(self.conv_output, axis=[1], name='max_pool', keep_dims=True)
-            avg_pool = tf.reduce_mean(self.conv_output, axis=[1], name='avg_pool', keep_dims=True)
-            self.target_predictions = tf.layers.dense(tf.concat([max_pool, avg_pool], axis=1), units=1,
-                                                      kernel_regularizer=tf.contrib.layers.l2_regularizer(
-                                                          scale=config['lam_model']),
-                                                      name='target_prediction')
-        self.loss = tf.losses.mean_squared_error(self.target_scores_exp, self.target_predictions,
-                                                 scope='mean_squared_error')
-        self._train_op = tf.contrib.layers.optimize_loss(self.loss, tf.contrib.framework.get_global_step(),
-                                                         learning_rate=tf.constant(config['eta_model'], tf.float32),
-                                                         optimizer='Adam',
-                                                         clip_gradients=config.get('gradient_clip_value', 20.0),
-                                                         name='train_op')
+        h_conv1 = tf.nn.conv2d(x_image, W_conv1,
+                               strides=[1, 1, 1, 1], padding='SAME')
+        h_relu_conv1 = tf.nn.relu(h_conv1 + b_conv1, name='First_layer_output')
+        W_conv2 = tf.Variable(tf.random_normal([self.motif_len2, 1, self.num_motifs, 1]), name='W_conv2')
+        b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name='b_conv2')
+        h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
+                               strides=[1, 1, 1, 1], padding='SAME')
 
-    @property
-    def input(self):
-        return self._input
+        h_relu_conv2 = tf.nn.relu(h_conv2 + b_conv2)
+
+        h_max = tf.reduce_max(h_conv2 + b_conv2, axis=[1, 2, 3], name='h_max')
+        h_avg = tf.reduce_mean(h_conv2 + b_conv2, axis=[1, 2, 3], name='h_avg')
+        W_final = tf.Variable(tf.random_normal([2, 1], stddev=0.1))
+        b_final = tf.Variable(tf.constant(0.001, shape=[]))
+        h_final = tf.squeeze(tf.matmul(tf.stack([h_max, h_avg], axis=1), W_final) + b_final)
+        cost_batch = tf.square(h_final - y_true)
+        self._cost = cost = tf.reduce_mean(cost_batch)
+        norm_w = (tf.reduce_sum(tf.abs(W_conv1)) + tf.reduce_sum(tf.abs(W_conv2)))
+        optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
+        self._train_op = optimizer.minimize(cost + norm_w * lam_model)
+        self._predict_op = h_final
+
+    def initialize(self, session):
+        session.run(self._init_op)
 
     @property
     def config(self):
@@ -247,7 +251,7 @@ class CnnModel(object):
 
     @property
     def cost(self):
-        return self.loss
+        return self._cost
 
     @property
     def train_op(self):
@@ -255,16 +259,15 @@ class CnnModel(object):
 
     @property
     def predict_op(self):
-        return tf.squeeze(self.target_predictions)
+        return self._predict_op
 
     @property
     def x(self):
-        return self.rna_sequence
+        return self._x
 
     @property
     def y_true(self):
-        return self.target_scores
-
+        return self._y_true
 
 class CnnStructModel(object):
     """The deepbind_CNN model with structure"""
@@ -278,12 +281,10 @@ class CnnStructModel(object):
         self.motif_len2 = config['filter_lengths'][1]
         self.num_motifs2 = config['num_filters'][1]
         self._init_op = tf.global_variables_initializer()
-
         self._x = x = tf.placeholder(tf.float32, shape=[None, None, 9], name='One_hot_data')
         self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
-
+        self.seq_lens = tf.placeholder(tf.int32, shape=[None], name='seq_lens')
         x_image = tf.expand_dims(x, 2)
-
         W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 9, self.num_motifs], stddev=0.01), name='W_Conv1')
         b_conv1 = tf.Variable(tf.constant(0.001, shape=[self.num_motifs]), name='b_conv1')
 
@@ -296,33 +297,21 @@ class CnnStructModel(object):
                                strides=[1, 1, 1, 1], padding='SAME')
 
         h_relu_conv2 = tf.nn.relu(h_conv2 + b_conv2)
-        # h_max=tf.reduce_max(h_relu_conv2,reduction_indices=[1,2,3])
-        # Taking max of rectified output was giving poor performance
+
         h_max = tf.reduce_max(h_conv2 + b_conv2, axis=[1, 2, 3], name='h_max')
         h_avg = tf.reduce_mean(h_conv2 + b_conv2, axis=[1, 2, 3], name='h_avg')
         W_final = tf.Variable(tf.random_normal([2, 1], stddev=0.1))
         b_final = tf.Variable(tf.constant(0.001, shape=[]))
         h_final = tf.squeeze(tf.matmul(tf.stack([h_max, h_avg], axis=1), W_final) + b_final)
-        # Output has shape None and is a vector of length minib
-
-        # cost_batch = tf.square(h_max - y_true)
         cost_batch = tf.square(h_final - y_true)
         self._cost = cost = tf.reduce_mean(cost_batch)
-        # tf.scalar_summary("Training Loss", cost)
         norm_w = (tf.reduce_sum(tf.abs(W_conv1)) + tf.reduce_sum(tf.abs(W_conv2)))
-        # optimizer = tf.train.MomentumOptimizer(learning_rate=eta_model,
-        #                                        momentum=momentum_model)
         optimizer = tf.train.AdamOptimizer(learning_rate=eta_model)
-
         self._train_op = optimizer.minimize(cost + norm_w * lam_model)
         self._predict_op = h_final
 
     def initialize(self, session):
         session.run(self._init_op)
-
-    @property
-    def input(self):
-        return self._input
 
     @property
     def config(self):
@@ -528,9 +517,10 @@ class RnnModel(object):
         self._init_op = tf.global_variables_initializer()
         self._x = x = tf.placeholder(tf.float32, shape=[None, None, 4], name='One_hot_data')
         self._y_true = y_true = tf.placeholder(tf.float32, shape=[None], name='Labels')
+        self.seq_lens = tf.placeholder(tf.int32, shape=[None], name='seq_lens')
         x_image = tf.expand_dims(x, 2)
 
-        W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 4, self.num_motifs], stddev=0.01), name='W_Conv1')
+        W_conv1 = tf.Variable(tf.random_normal([self.motif_len, 1, 9, self.num_motifs], stddev=0.01), name='W_Conv1')
         b_conv1 = tf.Variable(tf.constant(0.001, shape=[self.num_motifs]), name='b_conv1')
 
         h_conv1 = tf.nn.conv2d(x_image, W_conv1,
@@ -540,15 +530,14 @@ class RnnModel(object):
         b_conv2 = tf.Variable(tf.constant(0.001, shape=[1]), name='b_conv2')
         h_conv2 = tf.nn.conv2d(h_relu_conv1, W_conv2,
                                strides=[1, 1, 1, 1], padding='SAME')
-        n_hidden = config.get('lstm_size', 10)
+        n_hidden = config.get('lstm_size', 20)
         W_out = tf.Variable(tf.random_normal([n_hidden, 1]), name='W_hidden')
         b_out = tf.Variable(tf.constant(0.001, shape=[1]), name='b_hidden')
         h_input = tf.squeeze(tf.nn.relu(h_conv2 + b_conv2), axis=[3], name='lstm_input')
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
-        outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32)
-        h_final = tf.squeeze(
-            tf.matmul(tf.squeeze(tf.slice(outputs, [0, tf.shape(outputs)[1] - 1, 0], [-1, 1, -1])), W_out) + b_out)
-
+        outputs, state = tf.nn.dynamic_rnn(lstm_cell, h_input, dtype=tf.float32,sequence_length=self.seq_lens)
+        last_step = self.extract_axis_1(outputs, self.seq_lens-1)
+        h_final = tf.reduce_sum(tf.matmul(last_step,W_out)+b_out, axis=1)
         cost_batch = tf.square(h_final - y_true)
         self._cost = cost = tf.reduce_mean(cost_batch, name='cost')
         norm_w = (tf.reduce_sum(tf.abs(W_conv1)) + tf.reduce_sum(tf.abs(W_conv2)) + tf.reduce_sum(tf.abs(W_out)))
@@ -556,9 +545,20 @@ class RnnModel(object):
 
         self._train_op = optimizer.minimize(cost + norm_w * lam_model)
         self._predict_op = h_final
+        self.lstm_output_layer = outputs
+        self.lstm_state_layer = state
+        self.lstm_scalar_weight = W_out
+        self.lstm_scalar_bias = b_out
 
     def initialize(self, session):
         session.run(self._init_op)
+
+    def extract_axis_1(self,data, ind):
+        batch_range = tf.range(tf.shape(data)[0])
+        indices = tf.stack([batch_range, ind], axis=1)
+        res = tf.gather_nd(data, indices)
+        return res
+
 
     @property
     def input(self):
@@ -630,21 +630,24 @@ def run_clip_epoch_parallel(session, model, input_data, config):
     return auc
 
 
-def run_clip_epoch_shorter(session, model, input_data, config):
-    model = model[0]
-    scores = np.zeros(input_data.total_cases)
-    auc = 0
-    window_size = 40
-    Nbatch = input_data.total_cases
+def run_clip_epoch_shorter(session, models, input_data, config):
+    # model = model[0]
+    Nbatch = int(ceil(input_data.total_cases * 1.0 / config['minib']))
+    minib = config['minib']
     fetches = {}
     feed_dict = {}
-    fetches['predictions'] = model.predict_op
+    scores = np.zeros([len(models), input_data.total_cases])
     for step in range(Nbatch):
-        input_sequence = input_data.data[step:step + 1, input_data.start_pos[step]:input_data.end_pos[step] + 1, :]
-        feed_dict[model.x] = input_sequence
-        vals = session.run(fetches, feed_dict)
-        scores[step] = vals['predictions']
-    auc = roc_auc_score(input_data.labels, scores)
+        for i, model in enumerate(models):
+            feed_dict[model.x] = input_data.data[(minib * step): (minib * (step + 1)), :, :]
+            feed_dict[model.y_true] = input_data.labels[(minib * step): (minib * (step + 1))]
+            feed_dict[model.seq_lens] = input_data.seq_length[(minib * step): minib * (step + 1)]
+            fetches["predictions" + str(i)] = model.predict_op
+        vals = session.run(fetches,feed_dict)
+        for j in range(len(models)):
+            scores[j,minib*step:minib*(step+1)] = vals['predictions'+str(j)]
+    scores_ensemble = np.mean(scores, axis=0)
+    auc = roc_auc_score(input_data.labels, scores_ensemble)
     return auc
 
 
@@ -875,8 +878,10 @@ def train_model_parallel(session, train_config, models, input_data,epochs, early
     max_minib = train_config['minib']
     num_batch_step = train_config.get('batch_size_steps', 3)
     min_minib = max_minib // (2**(num_batch_step-1))
-    batch_sizes = [min_minib*(2**((num_batch_step*j)//epochs)) for j in range(epochs)]
-    # batch_sizes = [max_minib for j in range(epochs)]
+    if train_config.get('batch_size_boosting', True):
+        batch_sizes = [min_minib*(2**((num_batch_step*j)//epochs)) for j in range(epochs)]
+    else:
+        batch_sizes = [max_minib for j in range(epochs)]
     for i in range(epochs):
         train_config['minib'] = batch_sizes[i]
         _ = run_epoch_parallel(session, models, input_data, train_config, i, train=True)

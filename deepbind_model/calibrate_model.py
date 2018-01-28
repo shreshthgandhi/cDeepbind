@@ -22,6 +22,7 @@ def calibrate_model(train_config):
 
     inputs = []
     folds = train_config['cv_folds']
+    max_minib = train_config['minib']
     for i in range(1,folds+1):
         inputs.append(utils.model_input(input_configuration, inf, model_type, validation=True, fold_id=i))
     epochs = train_config['hp_epochs']
@@ -51,4 +52,5 @@ def calibrate_model(train_config):
     best_calibration['pearson'] = best_pearson
     best_calibration['cost'] = best_cost
     utils.save_calibration(train_config, best_calibration)
+    train_config['minib'] = max_minib
     return best_calibration

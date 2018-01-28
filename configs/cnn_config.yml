@@ -1,9 +1,9 @@
 num_final_runs: 5
-model_type: RNN
-train_epochs: 15
+model_type: CNN_struct
+train_epochs: 20
+batch_size_boosting: False
 hp_epochs: 10
-minib: 2000
-batch_size_boosting: True
+minib: 100
 batch_size_steps: 3
 cv_folds: 3
 hp_dir: 'hyperparameters'
