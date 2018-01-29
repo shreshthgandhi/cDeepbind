@@ -1,6 +1,6 @@
 num_final_runs: 5
-model_type: RNN
-train_epochs: 15
+model_type: RNN_struct
+train_epochs: 9
 hp_epochs: 10
 minib: 2000
 batch_size_boosting: True

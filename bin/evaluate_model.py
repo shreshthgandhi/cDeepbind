@@ -9,7 +9,11 @@ import deepbind_model.utils as utils
 
 
 def main(target_protein, model_type, evaluation_type, CLIPSEQ_experiment=None):
-    config = utils.load_calibration({'hp_dir':'hyperparameters','model_type':model_type,'protein':target_protein})
+    if 'full' in target_protein:
+        protein_name = target_protein.split('_')[0]
+    else:
+        protein_name = target_protein
+    config = utils.load_calibration({'hp_dir':'hyperparameters','model_type':model_type,'protein':protein_name})
     if not (config):
         print("[!] No trained model to evaluate")
         print("[!] Exiting")
@@ -20,6 +24,7 @@ def main(target_protein, model_type, evaluation_type, CLIPSEQ_experiment=None):
     # model_idx = result_file['model_index']
     if evaluation_type == 'CLIPSEQ':
         assert CLIPSEQ_experiment
+        # utils.load_data_clipseq_shorter(CLIPSEQ_experiment)
         inf = np.load('data/GraphProt_CLIP_sequences/npz_archives/' + CLIPSEQ_experiment + '.npz')
         input_data = utils.ClipInputStruct(inf)
     else:
@@ -39,7 +44,7 @@ def main(target_protein, model_type, evaluation_type, CLIPSEQ_experiment=None):
                 auc = utils.run_clip_epoch_shorter(sess, models, input_data, config)
                 print(target_protein, CLIPSEQ_experiment, auc)
                 result_dict = {'auc': float(auc)}
-                save_dir = '../results/'
+                save_dir = 'results/'
                 print(auc)
 
                 yaml.dump(result_dict,

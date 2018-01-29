@@ -15,7 +15,10 @@ def main(train_config):
     model_type = train_config['model_type']
     traindir = os.path.join(train_config['model_dir'], target_protein, model_type, datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     os.makedirs(traindir)
+    if 'full' in target_protein:
+        train_config['protein'] = target_protein.split('_')[0]
     best_config = calib.calibrate_model(train_config)
+    train_config['protein'] = target_protein
     inf = utils.load_data(target_protein)
     models = []
     inputs = []

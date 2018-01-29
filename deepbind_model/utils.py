@@ -18,7 +18,7 @@ class ClipInputStruct(object):
         self.seq_length = self.end_pos-self.start_pos
         max_len = np.max(self.seq_length)
         data_array = np.zeros([data_one_hot.shape[0], max_len,9])
-        data_array[:,:,4:] = -0.2
+        data_array[:,:,4:] = 0.0
         structures = np.transpose(structures,[0,2,1])
         for i in range(data_one_hot.shape[0]):
             data_array[i,0:self.seq_length[i],:] = np.append(data_one_hot[i,self.start_pos[i]:self.end_pos[i],:],
@@ -1198,7 +1198,7 @@ def load_data_rnac2013(protein_name):
     for line_struct in infile_structB:
         exp_id = line_struct.split('>')[1].strip()
         exp_id_notnan = exp_ids_test[iter_test]
-        probs = np.ones([num_struct_classes, seq_length]) * (1 / num_struct_classes)
+        probs = np.ones([num_struct_classes, seq_length]) * (1.0 / num_struct_classes)
         for i in range(5):
             values_line = infile_structB.next().strip()
             values = np.array(map(np.float32, values_line.split('\t')))
@@ -1208,7 +1208,7 @@ def load_data_rnac2013(protein_name):
             iter_test = iter_test + 1
     if iter_test < len(exp_ids_test):
         for i in range(iter_test, len(exp_ids_test)):
-            structures_B.append(np.ones([num_struct_classes, seq_length]) * (1 / num_struct_classes))
+            structures_B.append(np.ones([num_struct_classes, seq_length]) * (1.0 / num_struct_classes))
 
 
     seq_train_enc = []
@@ -1452,7 +1452,7 @@ def load_data_clipseq_shorter(protein_name):
     neg_end_pos = []
     start_pos = []
     end_pos = []
-    with open(os.path.join(data_folder, protein_name + '.ls.positives.fa'), 'r') as pos_file:
+    with open(os.path.join(data_folder, protein_name + '.train.positives.fa'), 'r') as pos_file:
         for line in pos_file:
             full_seq = pos_file.next().strip()
             bound_region = np.array([int(c.isupper()) for c in full_seq], dtype=np.int32)
@@ -1463,7 +1463,7 @@ def load_data_clipseq_shorter(protein_name):
             end_pos.append(end_bound)
             seqs.append(full_seq)
             labels.append(1.0)
-    with open(os.path.join(data_folder, protein_name + '.ls.negatives.fa'), 'r') as neg_file:
+    with open(os.path.join(data_folder, protein_name + '.train.negatives.fa'), 'r') as neg_file:
         for line in neg_file:
             full_seq = neg_file.next().strip()
             bound_region = np.array([int(c.isupper()) for c in full_seq], dtype=np.int32)
@@ -1475,7 +1475,7 @@ def load_data_clipseq_shorter(protein_name):
             seqs.append(full_seq)
             labels.append(0.0)
     seq_len = max([len(seq) for seq in seqs])
-    with open(os.path.join(structure_folder, protein_name + '.ls.positives_combined'), 'r') as pos_struct_file:
+    with open(os.path.join(structure_folder, protein_name + '.train.positives_combined'), 'r') as pos_struct_file:
         for line in pos_struct_file:
             probs = np.ones([num_struct_classes, seq_len]) * (1.0 / num_struct_classes)
             for i in range(5):
@@ -1483,7 +1483,7 @@ def load_data_clipseq_shorter(protein_name):
                 values = np.array(map(np.float32, values_line.split('\t')))
                 probs[i, 0:values.shape[0]] = values
             structs.append(probs)
-    with open(os.path.join(structure_folder, protein_name + '.ls.negatives_combined'), 'r') as neg_struct_file:
+    with open(os.path.join(structure_folder, protein_name + '.train.negatives_combined'), 'r') as neg_struct_file:
         for line in neg_struct_file:
             probs = np.ones([num_struct_classes, seq_len]) * (1.0 / num_struct_classes)
             for i in range(5):
@@ -1509,7 +1509,7 @@ def load_data_clipseq_shorter(protein_name):
     data_one_hot = np.array(seq_enc, np.float32)
     labels_array = np.array(labels, np.float32)
     total_cases = data_one_hot.shape[0]
-    structures = np.array(structs, np.float32)
+    structures = np.array(structs, np.float32) - (1.0 / num_struct_classes)
     save_target = os.path.join('data/GraphProt_CLIP_sequences/npz_archives', protein_name + '.npz')
     np.savez(save_target, data_one_hot=data_one_hot,
              labels=labels_array,
@@ -1648,7 +1648,8 @@ def load_data_rnac_s(path):
 
 def load_data(protein_name):
     if 'RNCMPT' in protein_name:
-        if not (os.path.isfile('data/rnac/npz_archives/' + str(protein_name) + '.npz')):
+        # if not (os.path.isfile('data/rnac/npz_archives/' + str(protein_name) + '.npz')):
+        if True:
             print("[!] Processing input for " + protein_name)
             load_data_rnac2013(protein_name)
         return np.load('data/rnac/npz_archives/' + str(protein_name) + '.npz')
