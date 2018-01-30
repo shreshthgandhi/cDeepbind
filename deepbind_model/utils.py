@@ -632,14 +632,15 @@ def run_clip_epoch_parallel(session, model, input_data, config):
 
 def run_clip_epoch_shorter(session, models, input_data, config):
     # model = model[0]
-    Nbatch = int(ceil(input_data.total_cases * 1.0 / config['minib']))
-    minib = config['minib']
+    Nbatch = int(ceil(input_data.total_cases * 1.0))
+    minib = 1
     fetches = {}
     feed_dict = {}
     scores = np.zeros([len(models), input_data.total_cases])
     for step in range(Nbatch):
         for i, model in enumerate(models):
-            feed_dict[model.x] = input_data.data[(minib * step): (minib * (step + 1)), :, :]
+            seq_len = input_data.seq_length[step]
+            feed_dict[model.x] = input_data.data[(step): ((step + 1)),0:seq_len ,:]
             feed_dict[model.y_true] = input_data.labels[(minib * step): (minib * (step + 1))]
             feed_dict[model.seq_lens] = input_data.seq_length[(minib * step): minib * (step + 1)]
             fetches["predictions" + str(i)] = model.predict_op
