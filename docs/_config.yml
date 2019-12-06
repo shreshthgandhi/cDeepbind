@@ -1,1 +1,4 @@
 theme: jekyll-theme-cayman
+title: cDeepBind
+description: A context sensitive deep learning model of RNA Protein Binding
+show_downloads: true
